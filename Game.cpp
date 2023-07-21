@@ -19,7 +19,11 @@
 // @TODO: BUG: while cliping with great speed the player teleports (shall not be a gameplay problem)
 // @TODO: add assertions (change clipping to assert, player shan't touch the edge)
 // @TODO: add scaling and world coords
+// @TODO: remake char switches to enum
 // @TODO: refactor globals where needed
+// @TODO: remake vector to templated struct?
+// @TODO: go over u32/s32 choices, and change ij to xy where needed
+// @TODO: add static asserts to all constants
 
 typedef float     f32;
 typedef double    f64;
@@ -42,9 +46,9 @@ typedef struct vec2f_tag { f32 c[2]; } vec2f_t;
 #define BYTES_PER_PIXEL 4
 #define IMAGE_PITCH     SCREEN_WIDTH * BYTES_PER_PIXEL
 
-#define SQUARE_SIZE     32
-#define GEOM_WIDTH      SCREEN_WIDTH/SQUARE_SIZE
-#define GEOM_HEIGHT     SCREEN_HEIGHT/SQUARE_SIZE
+#define SECTOR_SIZE     32
+#define GEOM_WIDTH      SCREEN_WIDTH/SECTOR_SIZE
+#define GEOM_HEIGHT     SCREEN_HEIGHT/SECTOR_SIZE
 
 typedef char      static_geom_t[GEOM_HEIGHT][GEOM_WIDTH+1];
 
@@ -83,8 +87,8 @@ static static_geom_t level_geometries[] = { {
 #define EXIT_COLOR    0x5C54A4
 #define PLAYER_COLOR  0x8F00FF
 
-#define PLAYER_SIZE            16
-#define PLAYER_GRAVTY          256.0
+#define PLAYER_SIZE            17
+#define PLAYER_GRAVITY         256.0
 #define PLAYER_BOUNCE_FACTOR   1.0
 #define PLAYER_INIT_VELOCITY_X 0.0
 #define PLAYER_INIT_VELOCITY_Y -256.0
@@ -97,23 +101,23 @@ typedef struct player_tag {
 
 // @TEST
 #define PHYSICS_UPDATE_INTERVAL      1./30.
-static f32 fixed_dt = 0;
-
-static player_t player   = { 0 };
+static f32 fixed_dt      = 0;
 static u32 current_level = 0;
 
-static vec2_t locate_player(static_geom_t *geom)
-{
-    const u32 in_square_offset_x = (SQUARE_SIZE-PLAYER_SIZE)/2;
-    const u32 in_square_offset_y = SQUARE_SIZE-PLAYER_SIZE;
+static player_t player   = { 0 };
 
-    // @TODO: might be done comptime
+static vec2_t locate_player_spawn_in_geom(static_geom_t *geom)
+{
+    const u32 in_square_offset_x = SECTOR_SIZE/2;
+    const u32 in_square_offset_y = SECTOR_SIZE-(PLAYER_SIZE/2);
+
+    // @TODO: might be done comptime, and/or more optimally
     vec2_t pos = { 0 };
     for (u32 i = 0; i < GEOM_HEIGHT; i++) 
         for (u32 j = 0; j < GEOM_WIDTH; j++) {
             if ((*geom)[i][j] == '^') {
-                pos.c[0] = j*SQUARE_SIZE + in_square_offset_x;
-                pos.c[1] = i*SQUARE_SIZE + in_square_offset_y;
+                pos.c[0] = j*SECTOR_SIZE + in_square_offset_x;
+                pos.c[1] = i*SECTOR_SIZE + in_square_offset_y;
                 return pos;
             }
         }
@@ -122,21 +126,114 @@ static vec2_t locate_player(static_geom_t *geom)
     return pos;
 }
 
-static void clip_player_pos()
+static void init_player()
 {
-    player.pos.c[0] = CLIP(player.pos.c[0], 0, SCREEN_WIDTH-PLAYER_SIZE);
-    player.pos.c[1] = CLIP(player.pos.c[1], 0, SCREEN_HEIGHT-PLAYER_SIZE);
+    player.pos = locate_player_spawn_in_geom(&level_geometries[current_level]);
+    player.velocity.c[0] = PLAYER_INIT_VELOCITY_X;
+    player.velocity.c[1] = PLAYER_INIT_VELOCITY_Y;
 }
 
 // initialize game data in this function
 void initialize()
 {
-    current_level = 0; // @TODO: remove one of them
+    current_level = 0;
     fixed_dt = 0;
+
     // @TODO: create level init phase
-    player.pos = locate_player(&level_geometries[current_level]);
-    player.velocity.c[0] = PLAYER_INIT_VELOCITY_X;
-    player.velocity.c[1] = PLAYER_INIT_VELOCITY_Y;
+    init_player();
+}
+
+static inline void clip_player_pos()
+{
+    player.pos.c[0] = CLIP(player.pos.c[0], PLAYER_SIZE/2, SCREEN_WIDTH-PLAYER_SIZE/2-1);
+    player.pos.c[1] = CLIP(player.pos.c[1], PLAYER_SIZE/2, SCREEN_HEIGHT-PLAYER_SIZE/2-1);
+}
+
+typedef struct player_to_geom_collision_info_tag {
+    u32 num_sectors;
+    s32 sector_indices[4][2];
+} player_to_geom_collision_info_t;
+
+player_to_geom_collision_info_t get_player_collision_info()
+{
+    // @TODO: REFACCC
+    player_to_geom_collision_info_t collision_info;
+    collision_info.num_sectors = 0;
+    memset(&collision_info.sector_indices, -1, sizeof(collision_info.sector_indices));
+
+    s32 player_sector_j = player.pos.c[0] / SECTOR_SIZE;
+    s32 player_sector_i = player.pos.c[1] / SECTOR_SIZE;
+
+    u32 pos_in_sector_x = player.pos.c[0] % SECTOR_SIZE;
+    u32 pos_in_sector_y = player.pos.c[1] % SECTOR_SIZE;
+
+    collision_info.sector_indices[0][0] = player_sector_j;
+    collision_info.sector_indices[0][1] = player_sector_i;
+    collision_info.num_sectors++;
+    
+    if (player_sector_i > 0 && pos_in_sector_y <= PLAYER_SIZE/2) {
+        collision_info.sector_indices[collision_info.num_sectors][0] = player_sector_j;
+        collision_info.sector_indices[collision_info.num_sectors][1] = player_sector_i-1;
+        collision_info.num_sectors++;
+    } else if (player_sector_i < GEOM_HEIGHT-1 && pos_in_sector_y > SECTOR_SIZE-PLAYER_SIZE/2) {
+        collision_info.sector_indices[collision_info.num_sectors][0] = player_sector_j;
+        collision_info.sector_indices[collision_info.num_sectors][1] = player_sector_i+1;
+        collision_info.num_sectors++;
+    }
+
+    if (player_sector_j > 0 && pos_in_sector_x <= PLAYER_SIZE/2) {
+        collision_info.sector_indices[collision_info.num_sectors][0] = player_sector_j-1;
+        collision_info.sector_indices[collision_info.num_sectors][1] = player_sector_i;
+        collision_info.num_sectors++;
+    } else if (player_sector_j < GEOM_WIDTH-1 && pos_in_sector_x > SECTOR_SIZE-PLAYER_SIZE/2) {
+        collision_info.sector_indices[collision_info.num_sectors][0] = player_sector_j+1;
+        collision_info.sector_indices[collision_info.num_sectors][1] = player_sector_i;
+        collision_info.num_sectors++;
+    }
+
+    if (collision_info.num_sectors == 3) { // Corner
+        collision_info.sector_indices[collision_info.num_sectors][0] = collision_info.sector_indices[2][0];
+        collision_info.sector_indices[collision_info.num_sectors][1] = collision_info.sector_indices[1][1];
+        collision_info.num_sectors++;
+    }
+
+    return collision_info;
+}
+
+static void process_player_to_geom_collisions()
+{
+    static_geom_t *geom = &level_geometries[current_level];
+    player_to_geom_collision_info_t collision_info = get_player_collision_info();
+
+    // @TODO: we've got the sectors, now calculate collisions
+}
+
+static void tick_physics(f32 dt)
+{
+    fixed_dt += dt;
+
+    if (fixed_dt > PHYSICS_UPDATE_INTERVAL) {
+        player.velocity.c[1] += PLAYER_GRAVITY * fixed_dt;
+        player.pos.c[0] += player.velocity.c[0] * fixed_dt;
+        player.pos.c[1] += player.velocity.c[1] * fixed_dt;
+        clip_player_pos();
+
+        fixed_dt = 0;
+    }
+
+    process_player_to_geom_collisions();
+}
+
+static void process_input()
+{
+    bool l_pressed = is_key_pressed(VK_LEFT);
+    bool r_pressed = is_key_pressed(VK_RIGHT);
+    if (l_pressed && !r_pressed)
+        player.velocity.c[0] = -PLAYER_LATERAL_SPEED;
+    else if (r_pressed && !l_pressed)
+        player.velocity.c[0] = PLAYER_LATERAL_SPEED;
+    else
+        player.velocity.c[0] = 0;
 }
 
 // this function is called to update game data,
@@ -148,26 +245,8 @@ void act(f32 dt)
 
     //printf("%6.5f s per frame\n", dt);
 
-    // @TEST
-    bool l_pressed = is_key_pressed(VK_LEFT);
-    bool r_pressed = is_key_pressed(VK_RIGHT);
-    printf("%d %d\n", l_pressed, r_pressed);
-    if (l_pressed && !r_pressed)
-        player.velocity.c[0] = -PLAYER_LATERAL_SPEED;
-    else if (r_pressed && !l_pressed)
-        player.velocity.c[0] = PLAYER_LATERAL_SPEED;
-    else
-        player.velocity.c[0] = 0;
-
-    fixed_dt += dt;
-    if (fixed_dt > PHYSICS_UPDATE_INTERVAL) {
-        player.velocity.c[1] += PLAYER_GRAVTY * fixed_dt;
-        player.pos.c[0] += player.velocity.c[0] * fixed_dt;
-        player.pos.c[1] += player.velocity.c[1] * fixed_dt;
-        clip_player_pos();
-
-        fixed_dt = 0;
-    }
+    tick_physics(dt);
+    process_input();
 }
 
 static void draw_rect(u32 pos_x, u32 pos_y, u32 size_x, u32 size_y, u32 color)
@@ -193,8 +272,8 @@ static void draw_static_geom()
     // @TODO: speed up to rect drawing
     for (u32 i = 0; i < GEOM_HEIGHT; i++) 
         for (u32 j = 0; j < GEOM_WIDTH; j++) {
-            u32 sq_y = i*SQUARE_SIZE;
-            u32 sq_x = j*SQUARE_SIZE;
+            u32 sq_y = i*SECTOR_SIZE;
+            u32 sq_x = j*SECTOR_SIZE;
 
             u32 color = SURFACE_COLOR;
             switch ((*geom)[i][j]) {
@@ -212,13 +291,13 @@ static void draw_static_geom()
                     break;
             }
 
-            if (color) draw_square(sq_x, sq_y, SQUARE_SIZE, color);
+            if (color) draw_square(sq_x, sq_y, SECTOR_SIZE, color);
         }
 }
 
 static inline void draw_player()
 {
-    draw_square(player.pos.c[0], player.pos.c[1], PLAYER_SIZE, PLAYER_COLOR);
+    draw_square(player.pos.c[0]-PLAYER_SIZE/2, player.pos.c[1]-PLAYER_SIZE/2, PLAYER_SIZE, PLAYER_COLOR);
 }
 
 // fill buffer in this function
