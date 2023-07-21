@@ -30,3 +30,11 @@
 *.exe
 *.out
 *.app
+
+tags
+Makefile
+CMakeCache.txt
+cmake_install.cmake
+CMakeFiles/
+
+game
