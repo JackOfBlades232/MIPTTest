@@ -14,12 +14,10 @@
 //  is_mouse_button_pressed(int button) - check if mouse button is pressed (0 - left button, 1 - right button)
 //  schedule_quit_game() - quit game after act()
 
-// @TODO: border clipping
-// @TODO: gravity
-// @TODO: input->lateral movement
 // @TODO: collisions with walls
 
-// @TODO: add assertions
+// @TODO: BUG: while cliping with great speed the player teleports (shall not be a gameplay problem)
+// @TODO: add assertions (change clipping to assert, player shan't touch the edge)
 // @TODO: add scaling and world coords
 // @TODO: refactor globals where needed
 
@@ -37,8 +35,9 @@ typedef int64_t   s64;
 typedef struct vec2_tag { u32 c[2]; }  vec2_t;
 typedef struct vec2f_tag { f32 c[2]; } vec2f_t;
 
-#define MIN(a, b) (a < b ? a : b)
-#define MAX(a, b) (a > b ? a : b)
+#define MIN(_a, _b) (_a < _b ? _a : _b)
+#define MAX(_a, _b) (_a > _b ? _a : _b)
+#define CLIP(_x, _min, _max) (MAX(_min, MIN(_max, _x)))
 
 #define BYTES_PER_PIXEL 4
 #define IMAGE_PITCH     SCREEN_WIDTH * BYTES_PER_PIXEL
@@ -85,15 +84,20 @@ static static_geom_t level_geometries[] = { {
 #define PLAYER_COLOR  0x8F00FF
 
 #define PLAYER_SIZE            16
+#define PLAYER_GRAVTY          256.0
 #define PLAYER_BOUNCE_FACTOR   1.0
 #define PLAYER_INIT_VELOCITY_X 0.0
-#define PLAYER_INIT_VELOCITY_Y -128.0
-#define PLAYER_LATERAL_SPEED   16.0
+#define PLAYER_INIT_VELOCITY_Y -256.0
+#define PLAYER_LATERAL_SPEED   256.0
 
 typedef struct player_tag {
     vec2_t pos;
     vec2f_t velocity;
 } player_t;
+
+// @TEST
+#define PHYSICS_UPDATE_INTERVAL      1./30.
+static f32 fixed_dt = 0;
 
 static player_t player   = { 0 };
 static u32 current_level = 0;
@@ -118,10 +122,17 @@ static vec2_t locate_player(static_geom_t *geom)
     return pos;
 }
 
+static void clip_player_pos()
+{
+    player.pos.c[0] = CLIP(player.pos.c[0], 0, SCREEN_WIDTH-PLAYER_SIZE);
+    player.pos.c[1] = CLIP(player.pos.c[1], 0, SCREEN_HEIGHT-PLAYER_SIZE);
+}
+
 // initialize game data in this function
 void initialize()
 {
     current_level = 0; // @TODO: remove one of them
+    fixed_dt = 0;
     // @TODO: create level init phase
     player.pos = locate_player(&level_geometries[current_level]);
     player.velocity.c[0] = PLAYER_INIT_VELOCITY_X;
@@ -135,11 +146,28 @@ void act(f32 dt)
     if (is_key_pressed(VK_ESCAPE))
         schedule_quit_game();
 
-    printf("%6.5f s per frame\n", dt);
+    //printf("%6.5f s per frame\n", dt);
 
     // @TEST
-    player.pos.c[0] += player.velocity.c[0] * dt;
-    player.pos.c[1] += player.velocity.c[1] * dt;
+    bool l_pressed = is_key_pressed(VK_LEFT);
+    bool r_pressed = is_key_pressed(VK_RIGHT);
+    printf("%d %d\n", l_pressed, r_pressed);
+    if (l_pressed && !r_pressed)
+        player.velocity.c[0] = -PLAYER_LATERAL_SPEED;
+    else if (r_pressed && !l_pressed)
+        player.velocity.c[0] = PLAYER_LATERAL_SPEED;
+    else
+        player.velocity.c[0] = 0;
+
+    fixed_dt += dt;
+    if (fixed_dt > PHYSICS_UPDATE_INTERVAL) {
+        player.velocity.c[1] += PLAYER_GRAVTY * fixed_dt;
+        player.pos.c[0] += player.velocity.c[0] * fixed_dt;
+        player.pos.c[1] += player.velocity.c[1] * fixed_dt;
+        clip_player_pos();
+
+        fixed_dt = 0;
+    }
 }
 
 static void draw_rect(u32 pos_x, u32 pos_y, u32 size_x, u32 size_y, u32 color)
