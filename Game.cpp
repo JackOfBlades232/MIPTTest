@@ -1,4 +1,5 @@
 #include "Engine.h"
+#include "Utils.h"
 #include <stdlib.h>
 #include <memory.h>
 #include <stdio.h>
@@ -14,6 +15,9 @@
 //  is_mouse_button_pressed(int button) - check if mouse button is pressed (0 - left button, 1 - right button)
 //  schedule_quit_game() - quit game after act()
 
+// @TODO: vec2 and rect structs w methods
+// @TODO: remake coords to floats in tile space
+// @TODO: watch the lone coder vid to the end
 // @TODO: collisions with walls
 
 // @TODO: BUG: while cliping with great speed the player teleports (shall not be a gameplay problem)
@@ -24,24 +28,6 @@
 // @TODO: remake vector to templated struct?
 // @TODO: go over u32/s32 choices, and change ij to xy where needed
 // @TODO: add static asserts to all constants
-
-typedef float     f32;
-typedef double    f64;
-typedef uint8_t   u8; 
-typedef uint16_t  u16; 
-typedef uint32_t  u32;
-typedef uint64_t  u64;
-typedef int8_t    s8;
-typedef int16_t   s16;
-typedef int32_t   s32;
-typedef int64_t   s64;
-
-typedef struct vec2_tag { u32 c[2]; }  vec2_t;
-typedef struct vec2f_tag { f32 c[2]; } vec2f_t;
-
-#define MIN(_a, _b) (_a < _b ? _a : _b)
-#define MAX(_a, _b) (_a > _b ? _a : _b)
-#define CLIP(_x, _min, _max) (MAX(_min, MIN(_max, _x)))
 
 #define BYTES_PER_PIXEL 4
 #define IMAGE_PITCH     SCREEN_WIDTH * BYTES_PER_PIXEL
@@ -100,7 +86,7 @@ typedef struct player_tag {
 } player_t;
 
 // @TEST
-#define PHYSICS_UPDATE_INTERVAL      1./30.
+#define PHYSICS_UPDATE_INTERVAL      1./60.
 static f32 fixed_dt      = 0;
 static u32 current_level = 0;
 
