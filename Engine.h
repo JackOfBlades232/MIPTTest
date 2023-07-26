@@ -6,8 +6,8 @@
 
 #include <stdint.h>
 
-#define SCREEN_WIDTH 1024
-#define SCREEN_HEIGHT 768
+#define SCREEN_WIDTH 1024 *2
+#define SCREEN_HEIGHT 768 *2
 
 // backbuffer
 extern uint32_t buffer[SCREEN_HEIGHT][SCREEN_WIDTH];

@@ -11,8 +11,7 @@ typedef int16_t   s16;
 typedef int32_t   s32;
 typedef int64_t   s64;
 
-typedef struct vec2_tag { u32 c[2]; }  vec2_t;
-typedef struct vec2f_tag { f32 c[2]; } vec2f_t;
+#define EPSILON 0.000001
 
 #define MIN(_a, _b) (_a < _b ? _a : _b)
 #define MAX(_a, _b) (_a > _b ? _a : _b)
