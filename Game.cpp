@@ -73,20 +73,25 @@ static static_geom_t level_geometries[] = { {
 #define PLAYER_COLOR  0x8F00FF
 
 #define PLAYER_SIZE              0.5
-#define PLAYER_GRAVITY           8.0
+#define PLAYER_GRAVITY           36.0
 #define PLAYER_BOUNCE_FACTOR     1.0
 #define PLAYER_INIT_VELOCITY_X   0.0
-#define PLAYER_INIT_VELOCITY_Y   -8.0
-#define PLAYER_LATERAL_ACC       64.0
-#define PLAYER_MAX_LATERAL_SPEED 8.0
+#define PLAYER_INIT_VELOCITY_Y   -12.0
+#define PLAYER_LATERAL_SPEED     8.0
+#define PLAYER_LATERAL_DRAG      32.0
 
 typedef struct player_tag {
     rect_t  rect;
     vec2f_t velocity;
     vec2f_t acceleration;
+    // @TODO: refac?
+    bool movement_button_pressed;
 
     u32     num_sectors;
     rect_t  sectors[4];
+
+    // @TODO: factor out to game state
+    bool won, died;
 } player_t;
 
 // @TEST
@@ -113,20 +118,36 @@ static vec2f_t locate_player_spawn_in_geom(static_geom_t *geom)
 
 static void init_player()
 {
-    player.rect.pos = locate_player_spawn_in_geom(&level_geometries[current_level]);
     player.rect.size = vec2f_t(PLAYER_SIZE, PLAYER_SIZE);
+}
+
+static void reset_player()
+{
+    player.rect.pos = locate_player_spawn_in_geom(&level_geometries[current_level]);
     player.velocity = vec2f_t(PLAYER_INIT_VELOCITY_X, PLAYER_INIT_VELOCITY_Y);
     player.acceleration = vec2f_t(0, PLAYER_GRAVITY);
+
+    player.movement_button_pressed = false;
+
+    player.num_sectors = 0;
+
+    player.won = false;
+    player.died = false;
+}
+
+static void reset_level()
+{
+    fixed_dt = 0;
+    reset_player();
 }
 
 // initialize game data in this function
 void initialize()
 {
     current_level = 0;
-    fixed_dt = 0;
-
-    // @TODO: create level init phase
     init_player();
+
+    reset_level();
 }
 
 // Optimization to avoid checking all static sector collisions
@@ -185,6 +206,31 @@ static void resolve_player_to_surface_sector_collision(rect_t *s_rect)
     player.velocity = reflect_vec(-player.velocity, normal) * PLAYER_BOUNCE_FACTOR;
 }
 
+static void resolve_player_collisions()
+{
+    static_geom_t *geom = &level_geometries[current_level];
+
+    for (u32 i = 0; i < player.num_sectors; i++) {
+        u32 x = player.sectors[i].pos.x;
+        u32 y = player.sectors[i].pos.y;
+
+        // @TODO: create some tilemap with sector info and loop over it
+        switch ((*geom)[y][x]) {
+            case '#':
+                resolve_player_to_surface_sector_collision(&player.sectors[i]);
+                break;
+            case '*':
+                player.died = true;
+                break;
+            case '>':
+                player.won = true;
+                break;
+            default:
+                break;
+        }
+    }
+}
+
 static void tick_physics(f32 dt)
 {
     fixed_dt += dt;
@@ -193,21 +239,18 @@ static void tick_physics(f32 dt)
         return;
 
     player.velocity += player.acceleration * fixed_dt;
-    player.velocity.x = CLIP(player.velocity.x, -PLAYER_MAX_LATERAL_SPEED, PLAYER_MAX_LATERAL_SPEED);
+
+    // @HACK
+    f32 lateral_speed = player.velocity.x;
+    if (!player.movement_button_pressed && !FZERO(lateral_speed)) {
+        f32 d_speed = MIN(ABS(lateral_speed), PLAYER_LATERAL_DRAG) * SGN(lateral_speed) * fixed_dt;
+        player.velocity.x -= d_speed;
+    }
 
     player.rect.pos += player.velocity * fixed_dt;
 
     player_collect_intersecting_sectors();
-    for (u32 i = 0; i < player.num_sectors; i++) {
-        // @TODO: create some tilemap with sector info
-        u32 x = player.sectors[i].pos.x;
-        u32 y = player.sectors[i].pos.y;
-
-        // @TEST
-        char t = level_geometries[current_level][y][x];
-        if (t == '#')
-            resolve_player_to_surface_sector_collision(&player.sectors[i]);
-    }
+    resolve_player_collisions();
 
     fixed_dt = 0;
 }
@@ -216,12 +259,15 @@ static void process_input()
 {
     bool l_pressed = is_key_pressed(VK_LEFT);
     bool r_pressed = is_key_pressed(VK_RIGHT);
-    if (l_pressed && !r_pressed)
-        player.acceleration.x = -PLAYER_LATERAL_ACC;
-    else if (r_pressed && !l_pressed)
-        player.acceleration.x = PLAYER_LATERAL_ACC;
-    else
-        player.acceleration.x = 0;
+    // @TODO: refac and optimize boolean setting
+    if (l_pressed && !r_pressed) {
+        player.velocity.x = -PLAYER_LATERAL_SPEED;
+        player.movement_button_pressed = true;
+    } else if (r_pressed && !l_pressed) {
+        player.velocity.x = PLAYER_LATERAL_SPEED;
+        player.movement_button_pressed = true;
+    } else
+        player.movement_button_pressed = false;
 }
 
 // this function is called to update game data,
@@ -235,6 +281,12 @@ void act(f32 dt)
 
     process_input();
     tick_physics(dt);
+
+    if (player.won) {
+        // @TODO: advance level
+        reset_level();
+    } else if (player.died)
+        reset_level();
 }
 
 static void draw_rect(rect_t *r, u32 color)
@@ -269,8 +321,7 @@ static void draw_rect(rect_t *r, u32 color)
 
 static void draw_static_geom()
 {
-    static_geom_t *geom;
-    geom = &level_geometries[current_level];
+    static_geom_t *geom = &level_geometries[current_level];
     rect_t sector_rect(0, 0, 1, 1);
 
     for (; sector_rect.pos.y < GEOM_HEIGHT; sector_rect.pos.y++)

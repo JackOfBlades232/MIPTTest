@@ -18,6 +18,7 @@ typedef int64_t   s64;
 
 #define EPSILON 0.000001
 
+#define SGN(_a) (_a > 0 ? 1 : (_a < 0 ? -1 : 0))
 #define ABS(_a) (_a >= 0 ? _a : -_a)
 #define FZERO(_a) (_a < EPSILON && _a > -EPSILON)
 #define FEQ(_a, _b) FZERO(_a - _b)
