@@ -25,6 +25,16 @@ typedef int64_t   s64;
 #define FLESS(_a, _b) (_b - _a >= EPSILON)
 #define FLEQ(_a, _b) (_b - _a > -EPSILON)
 
+#define LOG_STRERR_GEN(_func, _errno, _fmt, ...) fprintf(stderr, "[ERR] (%s:%d: errno: %s) " _fmt "\n", \
+        __FILE__, __LINE__, (errno == 0 ? "None" : _func(_errno)), ##__VA_ARGS__)
+#define LOG_STRERR(_func, _fmt, ...) LOG_STRERR_GEN(_func, errno, _fmt, ##__VA_ARGS__)
+#define LOG_ERR(_fmt, ...) LOG_STRERR(strerror, _fmt, ##__VA_ARGS__)
+
+#define ASSERT(_e) if(!(_e)) { fprintf(stderr, "Assertion (" #_e ") failed at %s:%d\n", __FILE__, __LINE__); exit(1); }
+#define ASSERTF(_e, _fmt, ...) if(!(_e)) { fprintf(stderr, _fmt, ##__VA_ARGS__); exit(1); }
+#define ASSERT_ERR(_e) if(!(_e)) { LOG_ERR("Assertion (" #_e ") failed at %s:%d\n", __FILE__, __LINE__); exit(1); }
+#define ASSERTF_ERR(_e, _fmt, ...) if(!(_e)) { LOG_ERR(_fmt, ##__VA_ARGS__); exit(1); }
+
 template <class T>
 inline void swap_generic(T *a, T *b)
 {

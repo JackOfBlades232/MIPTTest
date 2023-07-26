@@ -18,15 +18,20 @@
 //  is_mouse_button_pressed(int button) - check if mouse button is pressed (0 - left button, 1 - right button)
 //  schedule_quit_game() - quit game after act()
 
-// @TODO: collisions with walls (DEBUG stage)
+// @TODO: moving platforms
+// @TODO: collectables
+// @TODO: font rendering & score
+// @TODO: game over/win UI
 
-// @TODO: BUG: while cliping with great speed the player teleports (shall not be a gameplay problem)
 // @TODO: add assertions (change clipping to assert, player shan't touch the edge)
 // @TODO: remake char switches to enum
 // @TODO: refactor globals where needed
-// @TODO: go over u32/s32 choices, and change ij to xy where needed
 // @TODO: add static asserts to all constants
 // @TODO: fix .h to <c..> in includes
+
+// @TODO: corner collisions are weird, fixem (problem: setting velocities from >1 sectors?)
+// @TODO: need to do something with lateral collisions -- now, when button is pressed, the player is stuck in the wall
+// @TODO: separate out rendering, input and gameplay logic
 
 #define BYTES_PER_PIXEL 4
 #define IMAGE_PITCH     SCREEN_WIDTH * BYTES_PER_PIXEL
@@ -73,12 +78,14 @@ static static_geom_t level_geometries[] = { {
 #define PLAYER_COLOR  0x8F00FF
 
 #define PLAYER_SIZE              0.5
-#define PLAYER_GRAVITY           36.0
-#define PLAYER_BOUNCE_FACTOR     1.0
+#define PLAYER_GRAVITY           48.0
 #define PLAYER_INIT_VELOCITY_X   0.0
-#define PLAYER_INIT_VELOCITY_Y   -12.0
+#define PLAYER_INIT_VELOCITY_Y   -8.0
 #define PLAYER_LATERAL_SPEED     8.0
 #define PLAYER_LATERAL_DRAG      32.0
+
+// @TEST
+#define VERT_BOUNCE_VELOCITY 20.0
 
 typedef struct player_tag {
     rect_t  rect;
@@ -112,13 +119,20 @@ static vec2f_t locate_player_spawn_in_geom(static_geom_t *geom)
                 return vec2f_t(x+in_square_offset_x, y+in_square_offset_y);
         }
 
-    // @TODO: log error
+    ASSERTF(0, "Assertion failed: There is no player spawn point in level %d\n", current_level);
     return vec2f_t();
 }
 
 static void init_player()
 {
     player.rect.size = vec2f_t(PLAYER_SIZE, PLAYER_SIZE);
+}
+
+static void increment_level()
+{
+    current_level++;
+    if (current_level >= LEVEL_CNT)
+        current_level -= LEVEL_CNT;
 }
 
 static void reset_player()
@@ -200,10 +214,16 @@ static void resolve_player_to_surface_sector_collision(rect_t *s_rect)
     f32 tmin;
     vec2f_t normal;
     bool intersected = intersect_ray_with_rect(player_center, player_dir, &ext_s_rect, &tmin, &normal);
-    // @TODO: assert intersected=true, we already checked the sectors
+
+    // we are supposed to only check the sectors that the player intersects with
+    ASSERT(intersected);
     
     player.rect.pos += player_dir*tmin + normal*EPSILON; 
-    player.velocity = reflect_vec(-player.velocity, normal) * PLAYER_BOUNCE_FACTOR;
+    player.velocity = reflect_vec(-player.velocity, normal);
+
+    // @TEST:
+    if (FZERO(normal.x))
+        player.velocity.y = SGN(normal.y) * VERT_BOUNCE_VELOCITY;
 }
 
 static void resolve_player_collisions()
@@ -283,7 +303,7 @@ void act(f32 dt)
     tick_physics(dt);
 
     if (player.won) {
-        // @TODO: advance level
+        increment_level();
         reset_level();
     } else if (player.died)
         reset_level();
@@ -298,7 +318,6 @@ static void draw_rect(rect_t *r, u32 color)
 
     u32 screen_size_x = r->size.x*SECTOR_PIX_SIZE;
     u32 screen_size_y = r->size.y*SECTOR_PIX_SIZE;
-    // @TODO: assert correct size
 
     // @TODO: factor apart?
     if (screen_pos_x < 0) {
@@ -311,6 +330,9 @@ static void draw_rect(rect_t *r, u32 color)
         screen_pos_y = 0;
     } else if (screen_pos_y > SCREEN_HEIGHT-screen_size_y)
         screen_size_y = SCREEN_HEIGHT-screen_pos_y;
+
+    ASSERT(screen_pos_x >= 0 && screen_pos_x+screen_size_x <= SCREEN_WIDTH);
+    ASSERT(screen_pos_y >= 0 && screen_pos_y+screen_size_y <= SCREEN_HEIGHT); 
 
     for (u32 y = screen_pos_y; y < screen_pos_y+screen_size_y; y++) {
         u32 *pixel = buffer[y] + screen_pos_x;
@@ -344,16 +366,6 @@ static void draw_static_geom()
                     color = 0;
                     break;
             }
-
-            //@TEST
-            /*
-            for (u32 i = 0; i < player.num_sectors; i++) {
-                if (FEQ(x, player.sectors[i].pos.x) && FEQ(y, player.sectors[i].pos.y)) {
-                    color = 0xFF00FF;
-                    break;
-                } 
-            }
-            */
 
             if (color) draw_rect(&sector_rect, color);
         }
