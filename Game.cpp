@@ -72,16 +72,18 @@ static static_geom_t level_geometries[] = { {
 #define EXIT_COLOR    0x5C54A4
 #define PLAYER_COLOR  0x8F00FF
 
-#define PLAYER_SIZE            0.5
-#define PLAYER_GRAVITY         8.0
-#define PLAYER_BOUNCE_FACTOR   1.0
-#define PLAYER_INIT_VELOCITY_X 0.0
-#define PLAYER_INIT_VELOCITY_Y -8.0
-#define PLAYER_LATERAL_SPEED   8.0
+#define PLAYER_SIZE              0.5
+#define PLAYER_GRAVITY           8.0
+#define PLAYER_BOUNCE_FACTOR     1.0
+#define PLAYER_INIT_VELOCITY_X   0.0
+#define PLAYER_INIT_VELOCITY_Y   -8.0
+#define PLAYER_LATERAL_ACC       64.0
+#define PLAYER_MAX_LATERAL_SPEED 8.0
 
 typedef struct player_tag {
     rect_t  rect;
     vec2f_t velocity;
+    vec2f_t acceleration;
 
     u32     num_sectors;
     rect_t  sectors[4];
@@ -114,6 +116,7 @@ static void init_player()
     player.rect.pos = locate_player_spawn_in_geom(&level_geometries[current_level]);
     player.rect.size = vec2f_t(PLAYER_SIZE, PLAYER_SIZE);
     player.velocity = vec2f_t(PLAYER_INIT_VELOCITY_X, PLAYER_INIT_VELOCITY_Y);
+    player.acceleration = vec2f_t(0, PLAYER_GRAVITY);
 }
 
 // initialize game data in this function
@@ -160,9 +163,9 @@ static void player_collect_intersecting_sectors()
     }
 }
 
-static void resolve_player_to_sector_collision(rect_t *s_rect)
+static void resolve_player_to_surface_sector_collision(rect_t *s_rect)
 {
-    if (player.velocity.is_zero())
+    if (player.velocity.is_zero() || !rects_are_intersecting(&player.rect, s_rect))
         return;
 
     // @TODO: avoid all the recalculations of half-size and center
@@ -174,14 +177,12 @@ static void resolve_player_to_sector_collision(rect_t *s_rect)
     rect_t ext_s_rect(s_rect->pos - half_size, s_rect->size + player.rect.size);
     
     f32 tmin;
-    f32 tmax;
-    bool intersected = intersect_ray_with_rect(player_center, player_dir, &ext_s_rect, &tmin, &tmax);
+    vec2f_t normal;
+    bool intersected = intersect_ray_with_rect(player_center, player_dir, &ext_s_rect, &tmin, &normal);
     // @TODO: assert intersected=true, we already checked the sectors
     
-    player.rect.pos += player_dir * tmin; 
-
-    // @TEST
-    player.velocity = vec2f_t();
+    player.rect.pos += player_dir*tmin + normal*EPSILON; 
+    player.velocity = reflect_vec(-player.velocity, normal) * PLAYER_BOUNCE_FACTOR;
 }
 
 static void tick_physics(f32 dt)
@@ -191,7 +192,9 @@ static void tick_physics(f32 dt)
     if (fixed_dt < PHYSICS_UPDATE_INTERVAL)
         return;
 
-    player.velocity.y += PLAYER_GRAVITY * fixed_dt;
+    player.velocity += player.acceleration * fixed_dt;
+    player.velocity.x = CLIP(player.velocity.x, -PLAYER_MAX_LATERAL_SPEED, PLAYER_MAX_LATERAL_SPEED);
+
     player.rect.pos += player.velocity * fixed_dt;
 
     player_collect_intersecting_sectors();
@@ -202,9 +205,8 @@ static void tick_physics(f32 dt)
 
         // @TEST
         char t = level_geometries[current_level][y][x];
-        printf("%d %d\n", i, t);
         if (t == '#')
-            resolve_player_to_sector_collision(&player.sectors[i]);
+            resolve_player_to_surface_sector_collision(&player.sectors[i]);
     }
 
     fixed_dt = 0;
@@ -215,11 +217,11 @@ static void process_input()
     bool l_pressed = is_key_pressed(VK_LEFT);
     bool r_pressed = is_key_pressed(VK_RIGHT);
     if (l_pressed && !r_pressed)
-        player.velocity.x = -PLAYER_LATERAL_SPEED;
+        player.acceleration.x = -PLAYER_LATERAL_ACC;
     else if (r_pressed && !l_pressed)
-        player.velocity.x = PLAYER_LATERAL_SPEED;
+        player.acceleration.x = PLAYER_LATERAL_ACC;
     else
-        player.velocity.x = 0;
+        player.acceleration.x = 0;
 }
 
 // this function is called to update game data,
@@ -293,12 +295,14 @@ static void draw_static_geom()
             }
 
             //@TEST
+            /*
             for (u32 i = 0; i < player.num_sectors; i++) {
                 if (FEQ(x, player.sectors[i].pos.x) && FEQ(y, player.sectors[i].pos.y)) {
                     color = 0xFF00FF;
                     break;
                 } 
             }
+            */
 
             if (color) draw_rect(&sector_rect, color);
         }
