@@ -62,15 +62,50 @@ static static_geom_t level_geometries[] = { {
         "#                        #######",
         "#                              #",
         "#                              #",
-        "# ^                            #",
+        "#                              #",
         "#            ####              #",
         "#   #############              #",
-        "#   #############              #",
+        "# ^ #############              #",
         "################################",
     }
 };
 // @TODO: refac
 #define LEVEL_CNT sizeof(level_geometries)/sizeof(*level_geometries)
+
+// @TEST
+struct moving_platform_t {
+    rect_t rect;
+    f32 speed;
+
+    vec2f_t init_pos;
+    u32 num_goals;
+    u32 goal_idx;
+    vec2f_t *goal_positions;
+
+    moving_platform_t(vec2f_t init_pos, vec2f_t size, f32 speed, vec2f_t *goals, u32 num_goals) :
+        rect(init_pos, size), speed(speed), init_pos(init_pos), 
+        num_goals(num_goals), goal_idx(0), goal_positions(goals) {}
+};
+
+// @TODO: make levels load from files
+static vec2f_t goal_positions1[] = { vec2f_t(19, 21.5), vec2f_t(19, 12.5) };
+static vec2f_t goal_positions2[] = { vec2f_t(26, 6.5), vec2f_t(26, 13.5) };
+static vec2f_t goal_positions3[] = { vec2f_t(1.5, 12), vec2f_t(8.5, 12) };
+
+static moving_platform_t level1_platforms[] {
+    moving_platform_t(vec2f_t(19, 19), vec2f_t(5, 1), 3, goal_positions1, 2),
+    moving_platform_t(vec2f_t(26, 9), vec2f_t(4, 1), 3, goal_positions2, 2),
+    moving_platform_t(vec2f_t(8, 12), vec2f_t(4, 1), 3, goal_positions3, 2)
+};
+
+struct moving_platform_arr_t {
+    u32 num_platforms;
+    moving_platform_t *platforms;
+};
+
+static moving_platform_arr_t level_moving_platforms[LEVEL_CNT] = {
+    { 3, level1_platforms }
+};
 
 #define SURFACE_COLOR 0x90EE90
 #define DANGER_COLOR  0xFC6A03
@@ -80,14 +115,14 @@ static static_geom_t level_geometries[] = { {
 #define PLAYER_SIZE              0.5
 #define PLAYER_GRAVITY           48.0
 #define PLAYER_INIT_VELOCITY_X   0.0
-#define PLAYER_INIT_VELOCITY_Y   -8.0
+#define PLAYER_INIT_VELOCITY_Y   -20.0
 #define PLAYER_LATERAL_SPEED     8.0
 #define PLAYER_LATERAL_DRAG      32.0
 
 // @TEST
-#define VERT_BOUNCE_VELOCITY 20.0
+#define VERT_BOUNCE_VELOCITY     20.0
 
-typedef struct player_tag {
+struct player_t {
     rect_t  rect;
     vec2f_t velocity;
     vec2f_t acceleration;
@@ -99,7 +134,7 @@ typedef struct player_tag {
 
     // @TODO: factor out to game state
     bool won, died;
-} player_t;
+};
 
 // @TEST
 #define PHYSICS_UPDATE_INTERVAL 1./60.
@@ -149,10 +184,21 @@ static void reset_player()
     player.died = false;
 }
 
+static void reset_moving_platforms()
+{
+    moving_platform_arr_t cur_arr = level_moving_platforms[current_level];
+    for (u32 i = 0; i < cur_arr.num_platforms; i++) {
+        moving_platform_t *platform = &cur_arr.platforms[i];
+        platform->rect.pos = platform->init_pos;
+        platform->goal_idx = 0;
+    }
+}
+
 static void reset_level()
 {
     fixed_dt = 0;
     reset_player();
+    reset_moving_platforms();
 }
 
 // initialize game data in this function
@@ -198,7 +244,7 @@ static void player_collect_intersecting_sectors()
     }
 }
 
-static void resolve_player_to_surface_sector_collision(rect_t *s_rect)
+static void resolve_player_to_static_rect_collision(rect_t *s_rect)
 {
     if (player.velocity.is_zero() || !rects_are_intersecting(&player.rect, s_rect))
         return;
@@ -237,7 +283,7 @@ static void resolve_player_collisions()
         // @TODO: create some tilemap with sector info and loop over it
         switch ((*geom)[y][x]) {
             case '#':
-                resolve_player_to_surface_sector_collision(&player.sectors[i]);
+                resolve_player_to_static_rect_collision(&player.sectors[i]);
                 break;
             case '*':
                 player.died = true;
@@ -249,15 +295,15 @@ static void resolve_player_collisions()
                 break;
         }
     }
+
+    // @TODO: factor out
+    moving_platform_arr_t cur_arr = level_moving_platforms[current_level];
+    for (u32 i = 0; i < cur_arr.num_platforms; i++)
+        resolve_player_to_static_rect_collision(&cur_arr.platforms[i].rect);
 }
 
-static void tick_physics(f32 dt)
+static void tick_player_movement()
 {
-    fixed_dt += dt;
-
-    if (fixed_dt < PHYSICS_UPDATE_INTERVAL)
-        return;
-
     player.velocity += player.acceleration * fixed_dt;
 
     // @HACK
@@ -268,6 +314,39 @@ static void tick_physics(f32 dt)
     }
 
     player.rect.pos += player.velocity * fixed_dt;
+}
+
+static void tick_moving_platforms_movement()
+{
+    moving_platform_arr_t cur_arr = level_moving_platforms[current_level];
+    for (u32 i = 0; i < cur_arr.num_platforms; i++) {
+        moving_platform_t *platform = &cur_arr.platforms[i];
+        
+        vec2f_t dest = platform->goal_positions[platform->goal_idx];
+        vec2f_t to_dest = dest - platform->rect.pos;
+        f32 dist = to_dest.mag();
+        vec2f_t dir = to_dest.normalized();
+
+        f32 offset = MIN(dist, platform->speed * fixed_dt);
+        platform->rect.pos += dir * offset;
+
+        if ((dest - platform->rect.pos).is_zero()) {
+            platform->goal_idx++;
+            if (platform->goal_idx >= platform->num_goals)
+                platform->goal_idx -= platform->num_goals;
+        }
+    }
+}
+
+static void tick_physics(f32 dt)
+{
+    fixed_dt += dt;
+
+    if (fixed_dt < PHYSICS_UPDATE_INTERVAL)
+        return;
+
+    tick_player_movement();
+    tick_moving_platforms_movement();
 
     player_collect_intersecting_sectors();
     resolve_player_collisions();
@@ -371,6 +450,13 @@ static void draw_static_geom()
         }
 }
 
+static void draw_moving_platforms()
+{
+    moving_platform_arr_t cur_arr = level_moving_platforms[current_level];
+    for (u32 i = 0; i < cur_arr.num_platforms; i++)
+        draw_rect(&cur_arr.platforms[i].rect, SURFACE_COLOR);
+}
+
 static inline void draw_player()
 {
     draw_rect(&player.rect, PLAYER_COLOR);
@@ -383,7 +469,8 @@ void draw()
     // clear backbuffer
     memset(buffer, 0, SCREEN_HEIGHT * SCREEN_WIDTH * sizeof(u32));
     draw_static_geom();
-    // @TODO: draw moving parts
+    draw_moving_platforms();
+    // @TODO: draw collectables
     draw_player();
 }
 
