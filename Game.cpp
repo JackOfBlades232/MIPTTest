@@ -18,20 +18,25 @@
 //  is_mouse_button_pressed(int button) - check if mouse button is pressed (0 - left button, 1 - right button)
 //  schedule_quit_game() - quit game after act()
 
-// @TODO: moving platforms
+
+// @TODO: separate out rendering, input and gameplay logic
+// @TODO: create game state struct
+// @TODO: create header for settings and constants, and a header for levels
+// @TODO: refac
+// @TODO: need to do something with lateral collisions -- now, when button is pressed, the player is stuck in the wall
+// @TODO: corner collisions are weird, fixem (migth be effect of the sticking problem)
+
+// @TODO: make tile maps for levels and read from ascii, then from file, refac level data
+// @TODO: keep static only platrform info, and allocate real platforms yourself
+// @TODO: refactor globals and unify C and C++ style structs where needed where needed
+// @TODO: add static asserts to all constants
+// @TODO: fix .h to <c..> in includes
+
 // @TODO: collectables
 // @TODO: font rendering & score
 // @TODO: game over/win UI
 
-// @TODO: add assertions (change clipping to assert, player shan't touch the edge)
-// @TODO: remake char switches to enum
-// @TODO: refactor globals where needed
-// @TODO: add static asserts to all constants
-// @TODO: fix .h to <c..> in includes
-
-// @TODO: corner collisions are weird, fixem (problem: setting velocities from >1 sectors?)
-// @TODO: need to do something with lateral collisions -- now, when button is pressed, the player is stuck in the wall
-// @TODO: separate out rendering, input and gameplay logic
+// @TODO: game-design and tweak parameters
 
 #define BYTES_PER_PIXEL 4
 #define IMAGE_PITCH     SCREEN_WIDTH * BYTES_PER_PIXEL
@@ -87,7 +92,6 @@ struct moving_platform_t {
         num_goals(num_goals), goal_idx(0), goal_positions(goals) {}
 };
 
-// @TODO: make levels load from files
 static vec2f_t goal_positions1[] = { vec2f_t(19, 21.5), vec2f_t(19, 12.5) };
 static vec2f_t goal_positions2[] = { vec2f_t(26, 6.5), vec2f_t(26, 13.5) };
 static vec2f_t goal_positions3[] = { vec2f_t(1.5, 12), vec2f_t(8.5, 12) };
@@ -280,7 +284,6 @@ static void resolve_player_collisions()
         u32 x = player.sectors[i].pos.x;
         u32 y = player.sectors[i].pos.y;
 
-        // @TODO: create some tilemap with sector info and loop over it
         switch ((*geom)[y][x]) {
             case '#':
                 resolve_player_to_static_rect_collision(&player.sectors[i]);
