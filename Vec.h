@@ -1,5 +1,6 @@
 #pragma once
 #include "Utils.h"
+#include <math.h>
 
 template <class T>
 struct vec2_generic_t {
@@ -19,6 +20,11 @@ struct vec2_generic_t {
     inline vec2_generic_t &operator -=(const vec2_generic_t &other) { x -= other.x, y -= other.y; return *this; }
     inline vec2_generic_t &operator *=(T scalar)                    { x *= scalar, y *= scalar; return *this; }
     inline vec2_generic_t &operator /=(T scalar)                    { x /= scalar, y /= scalar; return *this; }
+
+    inline T mag()                     { return sqrt(x*x + y*y); }
+    inline vec2_generic_t normalize()  { T r = 1/mag(); return (*this *= r); }
+    inline vec2_generic_t normalized() { T r = 1/mag(); return (*this * r); }
+    inline bool is_zero()              { return FZERO(x) && FZERO(y); }
 };
 
 template <class T> inline vec2_generic_t<T> operator *(T scalar, const vec2_generic_t<T> &v) { return vec2_generic_t<T>(scalar*v.x, scalar*v.y); }
