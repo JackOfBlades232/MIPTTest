@@ -35,6 +35,10 @@ typedef int64_t   s64;
 #define ASSERT_ERR(_e) if(!(_e)) { LOG_ERR("Assertion (" #_e ") failed at %s:%d\n", __FILE__, __LINE__); exit(1); }
 #define ASSERTF_ERR(_e, _fmt, ...) if(!(_e)) { LOG_ERR(_fmt, ##__VA_ARGS__); exit(1); }
 
+#define _ASSERT_GLUE(_a, _b) _a ## _b
+#define ASSERT_GLUE(_a, _b) _ASSERT_GLUE(_a, _b)
+#define STATIC_ASSERT(_e) enum { ASSERT_GLUE(s_assert_fail_, __LINE__) = 1 / (int)(!!(_e)) }
+
 template <class T>
 inline void swap_generic(T *a, T *b)
 {

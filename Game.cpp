@@ -22,16 +22,12 @@
 //  schedule_quit_game() - quit game after act()
 
 
-// @TODO: separate out rendering, input and gameplay logic
-// @TODO: refac
-
-// @TODO: add static asserts to all constants
-// @TODO: fix .h to <c..> in includes
-
 // @TODO: collectables
 // @TODO: font rendering & score
-// @TODO: game over/win UI
+// @TODO: win UI
 // @TODO: game-design multiple levels
+
+// @TODO: refac
 
 // Optional
 // - Saves
@@ -367,6 +363,7 @@ static void draw_rect(rect_t *r, u32 color);
 
 static void draw_static_geom();
 static void draw_moving_platforms();
+static void draw_collectables();
 
 void draw()
 {
@@ -445,6 +442,21 @@ static void draw_rect(rect_t *r, u32 color)
         for (u32 x = screen_pos_x; x < screen_pos_x+screen_size_x; x++)
             *(pixel++) = color;
     }
+}
+
+static void draw_diamond(rect_t *rect, u32 color);
+
+static void draw_collectables()
+{
+    for (u32 i = 0; i < current_level.num_collectables(); i++) {
+        collectable_t *collectable = current_level.get_collectable(i);
+        draw_diamond(&collectable->rect, COLLECTABLE_COLOR);
+    }
+}
+
+static void draw_diamond(rect_t *rect, u32 color)
+{
+    // @TODO: implement diamond drawing
 }
 
 /// Game deinitialization ///
