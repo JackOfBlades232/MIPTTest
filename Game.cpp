@@ -1,4 +1,6 @@
 #include "Engine.h"
+#include "Params.h"
+#include "Levels.h"
 #include "Vec.h"
 #include "Rect.h"
 #include "Utils.h"
@@ -34,96 +36,10 @@
 // @TODO: font rendering & score
 // @TODO: game over/win UI
 
-// @TODO: game-design and tweak parameters
-
 #define BYTES_PER_PIXEL 4
 #define IMAGE_PITCH     SCREEN_WIDTH * BYTES_PER_PIXEL
 
-#define GEOM_WIDTH      32
-#define GEOM_HEIGHT     24
 #define SECTOR_PIX_SIZE MIN(SCREEN_WIDTH/GEOM_WIDTH, SCREEN_HEIGHT/GEOM_HEIGHT)
-
-typedef char static_geom_t[GEOM_HEIGHT][GEOM_WIDTH+1];
-
-static static_geom_t level_geometries[] = { {
-        "################################",
-        "#                            >>#",
-        "#                            >>#",
-        "#                  *    *    >>#",
-        "#                  *    *    >>#",
-        "#          #####################",
-        "#        ##                    #",
-        "#      ##                      #",
-        "#    ##                        #",
-        "#                              #",
-        "###                            #",
-        "#            ############      #",
-        "#            #                 #",
-        "#            #                 #",
-        "#************#                 #",
-        "#                        #######",
-        "#                        #######",
-        "#                              #",
-        "#                              #",
-        "#                              #",
-        "#            ####              #",
-        "#   #############              #",
-        "# ^ #############              #",
-        "################################",
-    }
-};
-// @TODO: refac
-#define LEVEL_CNT sizeof(level_geometries)/sizeof(*level_geometries)
-
-// @TEST
-struct moving_platform_t {
-    rect_t rect;
-    f32 speed;
-
-    vec2f_t init_pos;
-    u32 num_goals;
-    u32 goal_idx;
-    vec2f_t *goal_positions;
-
-    moving_platform_t(vec2f_t init_pos, vec2f_t size, f32 speed, vec2f_t *goals, u32 num_goals) :
-        rect(init_pos, size), speed(speed), init_pos(init_pos), 
-        num_goals(num_goals), goal_idx(0), goal_positions(goals) {}
-};
-
-static vec2f_t goal_positions1[] = { vec2f_t(19, 21.5), vec2f_t(19, 12.5) };
-static vec2f_t goal_positions2[] = { vec2f_t(26, 6.5), vec2f_t(26, 13.5) };
-static vec2f_t goal_positions3[] = { vec2f_t(1.5, 12), vec2f_t(8.5, 12) };
-
-static moving_platform_t level1_platforms[] {
-    moving_platform_t(vec2f_t(19, 19), vec2f_t(5, 1), 3, goal_positions1, 2),
-    moving_platform_t(vec2f_t(26, 9), vec2f_t(4, 1), 3, goal_positions2, 2),
-    moving_platform_t(vec2f_t(8, 12), vec2f_t(4, 1), 3, goal_positions3, 2)
-};
-
-struct moving_platform_arr_t {
-    u32 num_platforms;
-    moving_platform_t *platforms;
-};
-
-static moving_platform_arr_t level_moving_platforms[LEVEL_CNT] = {
-    { 3, level1_platforms }
-};
-
-#define SURFACE_COLOR 0x90EE90
-#define DANGER_COLOR  0xFC6A03
-#define EXIT_COLOR    0x5C54A4
-#define PLAYER_COLOR  0x8F00FF
-
-#define PLAYER_SIZE              0.5
-#define PLAYER_GRAVITY           64.0
-#define PLAYER_INIT_VELOCITY_X   0.0
-#define PLAYER_INIT_VELOCITY_Y   -22.0
-#define PLAYER_LATERAL_SPEED     8.0
-#define PLAYER_LATERAL_DRAG      32.0
-
-// @TEST
-#define VERT_BOUNCE_VELOCITY     21.0
-#define SIDE_WALL_COLLISION_TIMEOUT 0.17
 
 struct player_t {
     rect_t  rect;
@@ -142,14 +58,12 @@ struct player_t {
     f32 time_after_side_wall_collision;
 };
 
-// @TEST
-#define PHYSICS_UPDATE_INTERVAL 1./60.
 static f32 fixed_dt      = 0;
 static u32 current_level = 0;
 
 static player_t player;
 
-static vec2f_t locate_player_spawn_in_geom(static_geom_t *geom)
+static vec2f_t locate_player_spawn_in_geom(const static_geom_t *geom)
 {
     const f32 in_square_offset_x = (1.-PLAYER_SIZE)/2;
     const f32 in_square_offset_y = 1.-PLAYER_SIZE;
@@ -284,7 +198,7 @@ static void resolve_player_to_static_rect_collision(rect_t *s_rect)
 
 static void resolve_player_collisions()
 {
-    static_geom_t *geom = &level_geometries[current_level];
+    const static_geom_t *geom = &level_geometries[current_level];
 
     for (u32 i = 0; i < player.num_sectors; i++) {
         u32 x = player.sectors[i].pos.x;
@@ -440,7 +354,7 @@ static void draw_rect(rect_t *r, u32 color)
 
 static void draw_static_geom()
 {
-    static_geom_t *geom = &level_geometries[current_level];
+    const static_geom_t *geom = &level_geometries[current_level];
     rect_t sector_rect(0, 0, 1, 1);
 
     for (; sector_rect.pos.y < GEOM_HEIGHT; sector_rect.pos.y++)
