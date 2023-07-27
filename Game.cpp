@@ -23,8 +23,6 @@
 // @TODO: create game state struct
 // @TODO: create header for settings and constants, and a header for levels
 // @TODO: refac
-// @TODO: need to do something with lateral collisions -- now, when button is pressed, the player is stuck in the wall
-// @TODO: corner collisions are weird, fixem (migth be effect of the sticking problem)
 
 // @TODO: make tile maps for levels and read from ascii, then from file, refac level data
 // @TODO: keep static only platrform info, and allocate real platforms yourself
@@ -117,14 +115,15 @@ static moving_platform_arr_t level_moving_platforms[LEVEL_CNT] = {
 #define PLAYER_COLOR  0x8F00FF
 
 #define PLAYER_SIZE              0.5
-#define PLAYER_GRAVITY           48.0
+#define PLAYER_GRAVITY           64.0
 #define PLAYER_INIT_VELOCITY_X   0.0
-#define PLAYER_INIT_VELOCITY_Y   -20.0
+#define PLAYER_INIT_VELOCITY_Y   -22.0
 #define PLAYER_LATERAL_SPEED     8.0
 #define PLAYER_LATERAL_DRAG      32.0
 
 // @TEST
-#define VERT_BOUNCE_VELOCITY     20.0
+#define VERT_BOUNCE_VELOCITY     21.0
+#define SIDE_WALL_COLLISION_TIMEOUT 0.17
 
 struct player_t {
     rect_t  rect;
@@ -138,6 +137,9 @@ struct player_t {
 
     // @TODO: factor out to game state
     bool won, died;
+
+    // @TEST
+    f32 time_after_side_wall_collision;
 };
 
 // @TEST
@@ -186,6 +188,8 @@ static void reset_player()
 
     player.won = false;
     player.died = false;
+
+    player.time_after_side_wall_collision = SIDE_WALL_COLLISION_TIMEOUT+EPSILON;
 }
 
 static void reset_moving_platforms()
@@ -274,6 +278,8 @@ static void resolve_player_to_static_rect_collision(rect_t *s_rect)
     // @TEST:
     if (FZERO(normal.x))
         player.velocity.y = SGN(normal.y) * VERT_BOUNCE_VELOCITY;
+    else
+        player.time_after_side_wall_collision = 0;
 }
 
 static void resolve_player_collisions()
@@ -312,7 +318,7 @@ static void tick_player_movement()
     // @HACK
     f32 lateral_speed = player.velocity.x;
     if (!player.movement_button_pressed && !FZERO(lateral_speed)) {
-        f32 d_speed = MIN(ABS(lateral_speed), PLAYER_LATERAL_DRAG) * SGN(lateral_speed) * fixed_dt;
+        f32 d_speed = MIN(ABS(lateral_speed), PLAYER_LATERAL_DRAG * fixed_dt) * SGN(lateral_speed);
         player.velocity.x -= d_speed;
     }
 
@@ -348,6 +354,10 @@ static void tick_physics(f32 dt)
     if (fixed_dt < PHYSICS_UPDATE_INTERVAL)
         return;
 
+    // @TEST
+    if (player.time_after_side_wall_collision < SIDE_WALL_COLLISION_TIMEOUT)
+        player.time_after_side_wall_collision += fixed_dt;
+
     tick_player_movement();
     tick_moving_platforms_movement();
 
@@ -361,6 +371,11 @@ static void process_input()
 {
     bool l_pressed = is_key_pressed(VK_LEFT);
     bool r_pressed = is_key_pressed(VK_RIGHT);
+
+    // @TEST
+    if (player.time_after_side_wall_collision < SIDE_WALL_COLLISION_TIMEOUT)
+        return;
+
     // @TODO: refac and optimize boolean setting
     if (l_pressed && !r_pressed) {
         player.velocity.x = -PLAYER_LATERAL_SPEED;
