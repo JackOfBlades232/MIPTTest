@@ -1,8 +1,9 @@
 #include "Engine.h"
-#include "Params.h"
-#include "Levels.h"
 #include "Vec.h"
 #include "Rect.h"
+#include "Level.h"
+#include "Params.h"
+#include "LevelSettings.h"
 #include "Utils.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,8 +23,6 @@
 
 
 // @TODO: separate out rendering, input and gameplay logic
-// @TODO: create game state struct
-// @TODO: create header for settings and constants, and a header for levels
 // @TODO: refac
 
 // @TODO: make tile maps for levels and read from ascii, then from file, refac level data
@@ -36,98 +35,120 @@
 // @TODO: font rendering & score
 // @TODO: game over/win UI
 
+/// Engine-specific defines ///
+
 #define BYTES_PER_PIXEL 4
 #define IMAGE_PITCH     SCREEN_WIDTH * BYTES_PER_PIXEL
 
 #define SECTOR_PIX_SIZE MIN(SCREEN_WIDTH/GEOM_WIDTH, SCREEN_HEIGHT/GEOM_HEIGHT)
 
-struct player_t {
-    rect_t  rect;
-    vec2f_t velocity;
-    vec2f_t acceleration;
-    // @TODO: refac?
+/// Global game state structures ///
+
+struct game_state_t {
+    f32  fixed_dt;
+
     bool movement_button_pressed;
 
-    u32     num_sectors;
-    rect_t  sectors[4];
+    u32  cur_level_idx;
 
-    // @TODO: factor out to game state
-    bool won, died;
+    bool level_completed;
+    bool player_died;
 
-    // @TEST
-    f32 time_after_side_wall_collision;
+    inline game_state_t() : fixed_dt(0), movement_button_pressed(false), 
+        cur_level_idx(0), level_completed(false), player_died(false) {}
+
+    void reset()
+    {
+        fixed_dt = 0;
+        movement_button_pressed = false;
+        level_completed = false;
+        player_died = false;
+    }
 };
 
-static f32 fixed_dt      = 0;
-static u32 current_level = 0;
+struct player_t {
+    rect_t   rect;
+    vec2f_t  velocity;
+    vec2f_t  acceleration;
 
-static player_t player;
+    vec2f_t  half_size;
 
-static vec2f_t locate_player_spawn_in_geom(const static_geom_t *geom)
-{
-    const f32 in_square_offset_x = (1.-PLAYER_SIZE)/2;
-    const f32 in_square_offset_y = 1.-PLAYER_SIZE;
+    u32      num_sectors;
+    rect_t   sectors[4];
+    f32      time_after_side_wall_collision;
 
-    for (u32 y = 0; y < GEOM_HEIGHT; y++) 
-        for (u32 x = 0; x < GEOM_WIDTH; x++) {
-            if ((*geom)[y][x] == '^')
-                return vec2f_t(x+in_square_offset_x, y+in_square_offset_y);
-        }
-
-    ASSERTF(0, "Assertion failed: There is no player spawn point in level %d\n", current_level);
-    return vec2f_t();
-}
-
-static void init_player()
-{
-    player.rect.size = vec2f_t(PLAYER_SIZE, PLAYER_SIZE);
-}
-
-static void increment_level()
-{
-    current_level++;
-    if (current_level >= LEVEL_CNT)
-        current_level -= LEVEL_CNT;
-}
-
-static void reset_player()
-{
-    player.rect.pos = locate_player_spawn_in_geom(&level_geometries[current_level]);
-    player.velocity = vec2f_t(PLAYER_INIT_VELOCITY_X, PLAYER_INIT_VELOCITY_Y);
-    player.acceleration = vec2f_t(0, PLAYER_GRAVITY);
-
-    player.movement_button_pressed = false;
-
-    player.num_sectors = 0;
-
-    player.won = false;
-    player.died = false;
-
-    player.time_after_side_wall_collision = SIDE_WALL_COLLISION_TIMEOUT+EPSILON;
-}
-
-static void reset_moving_platforms()
-{
-    moving_platform_arr_t cur_arr = level_moving_platforms[current_level];
-    for (u32 i = 0; i < cur_arr.num_platforms; i++) {
-        moving_platform_t *platform = &cur_arr.platforms[i];
-        platform->rect.pos = platform->init_pos;
-        platform->goal_idx = 0;
+    inline player_t() : rect(), velocity(), acceleration(), half_size(),
+        num_sectors(0), sectors(), time_after_side_wall_collision(0) {}
+    inline player_t(vec2f_t size) :
+        rect(vec2f_t(), size), velocity(), acceleration(),
+        num_sectors(0), sectors(), time_after_side_wall_collision(0)
+    {
+        half_size = rect.size/2;
     }
+
+    void reset(vec2f_t spawn_pos)
+    {
+        rect.pos = spawn_pos;
+        velocity = vec2f_t(PLAYER_INIT_VELOCITY_X, PLAYER_INIT_VELOCITY_Y);
+        acceleration = vec2f_t(0, PLAYER_GRAVITY);
+
+        num_sectors = 0;
+
+        time_after_side_wall_collision = SIDE_WALL_COLLISION_TIMEOUT+EPSILON;
+    }
+};
+
+/// Global game state ///
+static game_state_t  game_state;
+static player_t      player_box;
+static level_t       current_level;
+
+/// Initialization and level switching functions ///
+
+static void reset_level();
+static vec2f_t locate_player_spawn();
+
+void initialize()
+{
+    player_box = player_t(vec2f_t(PLAYER_SIZE_X, PLAYER_SIZE_Y));
+    current_level = level_t(game_state.cur_level_idx, all_levels_params);
+    current_level.init();
+
+    reset_level();
 }
 
 static void reset_level()
 {
-    fixed_dt = 0;
-    reset_player();
-    reset_moving_platforms();
+    game_state.reset();
+    player_box.reset(locate_player_spawn());
+    current_level.reset();
 }
 
-// initialize game data in this function
-void initialize()
+static vec2f_t locate_player_spawn()
 {
-    current_level = 0;
-    init_player();
+    const static_geom_map_t *geom_map = current_level.geom_map();
+
+    f32 in_square_offset_x = (1.-player_box.rect.size.x)/2;
+    f32 in_square_offset_y = 1.-player_box.rect.size.y;
+
+    for (u32 y = 0; y < GEOM_HEIGHT; y++) 
+        for (u32 x = 0; x < GEOM_WIDTH; x++) {
+            if ((*geom_map)[y][x] == SPAWN_GLYPH)
+                return vec2f_t(x+in_square_offset_x, y+in_square_offset_y);
+        }
+
+    ASSERTF(0, "Assertion failed: There is no player spawn point in level %d\n", game_state.cur_level_idx);
+    return vec2f_t();
+}
+
+static void switch_level()
+{
+    if (++game_state.cur_level_idx >= LEVEL_CNT)
+        game_state.cur_level_idx -= LEVEL_CNT;
+
+    current_level.cleanup();
+    current_level = level_t(game_state.cur_level_idx, all_levels_params);
+    current_level.init();
 
     reset_level();
 }
@@ -136,141 +157,139 @@ void initialize()
 // Relies on the fact that the player is smaller than the sector
 static void player_collect_intersecting_sectors()
 {
-    player.num_sectors = 0;
+    player_box.num_sectors = 0;
 
-    vec2f_t half_size = player.rect.size/2;
-    vec2f_t player_center = player.rect.pos + half_size;
+    vec2f_t player_center = player_box.rect.pos + player_box.half_size;
 
     f32 player_sector_x = floor(player_center.x);
     f32 player_sector_y = floor(player_center.y);
-    player.sectors[player.num_sectors++] = rect_t(player_sector_x, player_sector_y, 1, 1); 
+    player_box.sectors[player_box.num_sectors++] = rect_t(player_sector_x, player_sector_y, 1, 1); 
 
     player_center.x -= player_sector_x;
     player_center.y -= player_sector_y;
 
-    // @TODO: less/greater or non-strict?
-    if (player_sector_x > 0 && player_center.x < half_size.x)
-        player.sectors[player.num_sectors++] = rect_t(player_sector_x-1, player_sector_y, 1, 1); 
-    else if (player_sector_x < GEOM_WIDTH-1 && player_center.x > 1-half_size.x)
-        player.sectors[player.num_sectors++] = rect_t(player_sector_x+1, player_sector_y, 1, 1); 
+    if (player_sector_x > 0 && player_center.x <= player_box.half_size.x)
+        player_box.sectors[player_box.num_sectors++] = rect_t(player_sector_x-1, player_sector_y, 1, 1); 
+    else if (player_sector_x < GEOM_WIDTH-1 && player_center.x >= 1-player_box.half_size.x)
+        player_box.sectors[player_box.num_sectors++] = rect_t(player_sector_x+1, player_sector_y, 1, 1); 
 
-    if (player_sector_y > 0 && player_center.y < half_size.y)
-        player.sectors[player.num_sectors++] = rect_t(player_sector_x, player_sector_y-1, 1, 1); 
-    else if (player_sector_y < GEOM_HEIGHT-1 && player_center.y > 1-half_size.y)
-        player.sectors[player.num_sectors++] = rect_t(player_sector_x, player_sector_y+1, 1, 1); 
+    if (player_sector_y > 0 && player_center.y <= player_box.half_size.y)
+        player_box.sectors[player_box.num_sectors++] = rect_t(player_sector_x, player_sector_y-1, 1, 1); 
+    else if (player_sector_y < GEOM_HEIGHT-1 && player_center.y >= 1-player_box.half_size.y)
+        player_box.sectors[player_box.num_sectors++] = rect_t(player_sector_x, player_sector_y+1, 1, 1); 
 
-    if (player.num_sectors == 3) {
-        f32 last_sector_x = player.sectors[1].pos.x;
-        f32 last_sector_y = player.sectors[2].pos.y;
-        player.sectors[player.num_sectors++] = rect_t(last_sector_x, last_sector_y, 1, 1);
+    if (player_box.num_sectors == 3) {
+        f32 last_sector_x = player_box.sectors[1].pos.x;
+        f32 last_sector_y = player_box.sectors[2].pos.y;
+        player_box.sectors[player_box.num_sectors++] = rect_t(last_sector_x, last_sector_y, 1, 1);
     }
 }
 
 static void resolve_player_to_static_rect_collision(rect_t *s_rect)
 {
-    if (player.velocity.is_zero() || !rects_are_intersecting(&player.rect, s_rect))
+    if (player_box.velocity.is_zero() || !rects_are_intersecting(&player_box.rect, s_rect))
         return;
 
-    // @TODO: avoid all the recalculations of half-size and center
-    vec2f_t half_size = player.rect.size/2;
-    vec2f_t player_center = player.rect.pos + half_size;
-    vec2f_t player_dir = player.velocity.normalized();
+    vec2f_t player_center = player_box.rect.pos + player_box.half_size;
+    vec2f_t player_dir = player_box.velocity.normalized();
 
     // Rect with a padding of player_size/2 on all sides
-    rect_t ext_s_rect(s_rect->pos - half_size, s_rect->size + player.rect.size);
+    rect_t ext_s_rect(s_rect->pos - player_box.half_size, s_rect->size + player_box.rect.size);
     
     f32 tmin;
     vec2f_t normal;
     bool intersected = intersect_ray_with_rect(player_center, player_dir, &ext_s_rect, &tmin, &normal);
 
-    // we are supposed to only check the sectors that the player intersects with
+    // we are supposed to only check the sectors that the player_box intersects with
     ASSERT(intersected);
     
-    player.rect.pos += player_dir*tmin + normal*EPSILON; 
-    player.velocity = reflect_vec(-player.velocity, normal);
+    player_box.rect.pos += player_dir*tmin + normal*EPSILON; 
+    player_box.velocity = reflect_vec(-player_box.velocity, normal);
 
-    // @TEST:
-    if (FZERO(normal.x))
-        player.velocity.y = SGN(normal.y) * VERT_BOUNCE_VELOCITY;
-    else
-        player.time_after_side_wall_collision = 0;
+    // Two hacks:
+    // 1) In order for the game to be playable, the box must always
+    //      bounce up with the same speed
+    // 2) If the box collides with a vertical wall and the player_box is moving into it, 
+    //      the box will be stuck to the wall (since player_box controls reset velocity)
+    //      to avoid this, I disable player_box-controlled movement for some time after
+    //      a side wall collision
+    if (FZERO(normal.x)) // horiz wall/surface
+        player_box.velocity.y = SGN(normal.y) * VERT_BOUNCE_VELOCITY;
+    else // vertical (side) wall/surface
+        player_box.time_after_side_wall_collision = 0;
 }
 
 static void resolve_player_collisions()
 {
-    const static_geom_t *geom = &level_geometries[current_level];
+    const static_geom_map_t *geom_map = current_level.geom_map();
 
-    for (u32 i = 0; i < player.num_sectors; i++) {
-        u32 x = player.sectors[i].pos.x;
-        u32 y = player.sectors[i].pos.y;
+    for (u32 i = 0; i < player_box.num_sectors; i++) {
+        u32 x = player_box.sectors[i].pos.x;
+        u32 y = player_box.sectors[i].pos.y;
 
-        switch ((*geom)[y][x]) {
-            case '#':
-                resolve_player_to_static_rect_collision(&player.sectors[i]);
+        switch ((*geom_map)[y][x]) {
+            case SURFACE_GLYPH:
+                resolve_player_to_static_rect_collision(&player_box.sectors[i]);
                 break;
-            case '*':
-                player.died = true;
+            case DANGER_GLYPH:
+                game_state.player_died = true;
                 break;
-            case '>':
-                player.won = true;
+            case EXIT_GLYPH:
+                game_state.level_completed = true;
                 break;
             default:
                 break;
         }
     }
 
-    // @TODO: factor out
-    moving_platform_arr_t cur_arr = level_moving_platforms[current_level];
-    for (u32 i = 0; i < cur_arr.num_platforms; i++)
-        resolve_player_to_static_rect_collision(&cur_arr.platforms[i].rect);
+    for (u32 i = 0; i < current_level.num_platforms(); i++) {
+        moving_platform_t *platform = current_level.get_platform(i);
+        resolve_player_to_static_rect_collision(&platform->rect);
+    }
 }
 
 static void tick_player_movement()
 {
-    player.velocity += player.acceleration * fixed_dt;
+    player_box.velocity += player_box.acceleration * game_state.fixed_dt;
 
     // @HACK
-    f32 lateral_speed = player.velocity.x;
-    if (!player.movement_button_pressed && !FZERO(lateral_speed)) {
-        f32 d_speed = MIN(ABS(lateral_speed), PLAYER_LATERAL_DRAG * fixed_dt) * SGN(lateral_speed);
-        player.velocity.x -= d_speed;
+    f32 lateral_speed = player_box.velocity.x;
+    if (!game_state.movement_button_pressed && !FZERO(lateral_speed)) {
+        f32 d_speed = MIN(ABS(lateral_speed), PLAYER_LATERAL_DRAG * game_state.fixed_dt) * SGN(lateral_speed);
+        player_box.velocity.x -= d_speed;
     }
 
-    player.rect.pos += player.velocity * fixed_dt;
+    player_box.rect.pos += player_box.velocity * game_state.fixed_dt;
 }
 
 static void tick_moving_platforms_movement()
 {
-    moving_platform_arr_t cur_arr = level_moving_platforms[current_level];
-    for (u32 i = 0; i < cur_arr.num_platforms; i++) {
-        moving_platform_t *platform = &cur_arr.platforms[i];
+    for (u32 i = 0; i < current_level.num_platforms(); i++) {
+        moving_platform_t *platform = current_level.get_platform(i);
         
-        vec2f_t dest = platform->goal_positions[platform->goal_idx];
+        vec2f_t dest = platform->cur_goal();
         vec2f_t to_dest = dest - platform->rect.pos;
         f32 dist = to_dest.mag();
         vec2f_t dir = to_dest.normalized();
 
-        f32 offset = MIN(dist, platform->speed * fixed_dt);
+        f32 offset = MIN(dist, platform->speed() * game_state.fixed_dt);
         platform->rect.pos += dir * offset;
 
-        if ((dest - platform->rect.pos).is_zero()) {
-            platform->goal_idx++;
-            if (platform->goal_idx >= platform->num_goals)
-                platform->goal_idx -= platform->num_goals;
-        }
+        if ((dest - platform->rect.pos).is_zero())
+            platform->inc_goal_idx();
     }
 }
 
 static void tick_physics(f32 dt)
 {
-    fixed_dt += dt;
+    game_state.fixed_dt += dt;
 
-    if (fixed_dt < PHYSICS_UPDATE_INTERVAL)
+    if (game_state.fixed_dt < PHYSICS_UPDATE_INTERVAL)
         return;
 
     // @TEST
-    if (player.time_after_side_wall_collision < SIDE_WALL_COLLISION_TIMEOUT)
-        player.time_after_side_wall_collision += fixed_dt;
+    if (player_box.time_after_side_wall_collision < SIDE_WALL_COLLISION_TIMEOUT)
+        player_box.time_after_side_wall_collision += game_state.fixed_dt;
 
     tick_player_movement();
     tick_moving_platforms_movement();
@@ -278,7 +297,7 @@ static void tick_physics(f32 dt)
     player_collect_intersecting_sectors();
     resolve_player_collisions();
 
-    fixed_dt = 0;
+    game_state.fixed_dt = 0;
 }
 
 static void process_input()
@@ -287,18 +306,19 @@ static void process_input()
     bool r_pressed = is_key_pressed(VK_RIGHT);
 
     // @TEST
-    if (player.time_after_side_wall_collision < SIDE_WALL_COLLISION_TIMEOUT)
+    if (player_box.time_after_side_wall_collision < SIDE_WALL_COLLISION_TIMEOUT)
         return;
+
+    game_state.movement_button_pressed = false;
 
     // @TODO: refac and optimize boolean setting
     if (l_pressed && !r_pressed) {
-        player.velocity.x = -PLAYER_LATERAL_SPEED;
-        player.movement_button_pressed = true;
+        player_box.velocity.x = -PLAYER_LATERAL_SPEED;
+        game_state.movement_button_pressed = true;
     } else if (r_pressed && !l_pressed) {
-        player.velocity.x = PLAYER_LATERAL_SPEED;
-        player.movement_button_pressed = true;
-    } else
-        player.movement_button_pressed = false;
+        player_box.velocity.x = PLAYER_LATERAL_SPEED;
+        game_state.movement_button_pressed = true;
+    }
 }
 
 // this function is called to update game data,
@@ -313,10 +333,9 @@ void act(f32 dt)
     process_input();
     tick_physics(dt);
 
-    if (player.won) {
-        increment_level();
-        reset_level();
-    } else if (player.died)
+    if (game_state.level_completed)
+        switch_level();
+    else if (game_state.player_died)
         reset_level();
 }
 
@@ -330,7 +349,6 @@ static void draw_rect(rect_t *r, u32 color)
     u32 screen_size_x = r->size.x*SECTOR_PIX_SIZE;
     u32 screen_size_y = r->size.y*SECTOR_PIX_SIZE;
 
-    // @TODO: factor apart?
     if (screen_pos_x < 0) {
         screen_size_x += screen_pos_x;
         screen_pos_x = 0;
@@ -354,7 +372,7 @@ static void draw_rect(rect_t *r, u32 color)
 
 static void draw_static_geom()
 {
-    const static_geom_t *geom = &level_geometries[current_level];
+    const static_geom_map_t *geom_map = current_level.geom_map();
     rect_t sector_rect(0, 0, 1, 1);
 
     for (; sector_rect.pos.y < GEOM_HEIGHT; sector_rect.pos.y++)
@@ -363,14 +381,14 @@ static void draw_static_geom()
             u32 y = sector_rect.pos.y;
             u32 color;
 
-            switch ((*geom)[y][x]) {
-                case '#':
+            switch ((*geom_map)[y][x]) {
+                case SURFACE_GLYPH:
                     color = SURFACE_COLOR;
                     break;
-                case '*':
+                case DANGER_GLYPH:
                     color = DANGER_COLOR;
                     break;
-                case '>':
+                case EXIT_GLYPH:
                     color = EXIT_COLOR;
                     break;
                 default:
@@ -384,14 +402,15 @@ static void draw_static_geom()
 
 static void draw_moving_platforms()
 {
-    moving_platform_arr_t cur_arr = level_moving_platforms[current_level];
-    for (u32 i = 0; i < cur_arr.num_platforms; i++)
-        draw_rect(&cur_arr.platforms[i].rect, SURFACE_COLOR);
+    for (u32 i = 0; i < current_level.num_platforms(); i++) {
+        moving_platform_t *platform = current_level.get_platform(i);
+        draw_rect(&platform->rect, SURFACE_COLOR);
+    }
 }
 
 static inline void draw_player()
 {
-    draw_rect(&player.rect, PLAYER_COLOR);
+    draw_rect(&player_box.rect, PLAYER_COLOR);
 }
 
 // fill buffer in this function
@@ -409,5 +428,5 @@ void draw()
 // free game data in this function
 void finalize()
 {
+    current_level.cleanup();
 }
-
