@@ -25,15 +25,19 @@
 // @TODO: separate out rendering, input and gameplay logic
 // @TODO: refac
 
-// @TODO: make tile maps for levels and read from ascii, then from file, refac level data
-// @TODO: keep static only platrform info, and allocate real platforms yourself
-// @TODO: refactor globals and unify C and C++ style structs where needed where needed
 // @TODO: add static asserts to all constants
 // @TODO: fix .h to <c..> in includes
 
 // @TODO: collectables
 // @TODO: font rendering & score
 // @TODO: game over/win UI
+// @TODO: game-design multiple levels
+
+// Optional
+// - Saves
+// - Particles&textures for collectables
+// - Loading levels from files
+// - Main menu with sidescrolling choice of levels (with static geom miniatures)
 
 /// Engine-specific defines ///
 
@@ -42,7 +46,7 @@
 
 #define SECTOR_PIX_SIZE MIN(SCREEN_WIDTH/GEOM_WIDTH, SCREEN_HEIGHT/GEOM_HEIGHT)
 
-/// Global game state structures ///
+/// Global structures ///
 
 struct game_state_t {
     f32  fixed_dt;
@@ -66,7 +70,7 @@ struct game_state_t {
     }
 };
 
-struct player_t {
+struct player_box_t {
     rect_t   rect;
     vec2f_t  velocity;
     vec2f_t  acceleration;
@@ -77,9 +81,9 @@ struct player_t {
     rect_t   sectors[4];
     f32      time_after_side_wall_collision;
 
-    inline player_t() : rect(), velocity(), acceleration(), half_size(),
+    inline player_box_t() : rect(), velocity(), acceleration(), half_size(),
         num_sectors(0), sectors(), time_after_side_wall_collision(0) {}
-    inline player_t(vec2f_t size) :
+    inline player_box_t(vec2f_t size) :
         rect(vec2f_t(), size), velocity(), acceleration(),
         num_sectors(0), sectors(), time_after_side_wall_collision(0)
     {
@@ -94,13 +98,13 @@ struct player_t {
 
         num_sectors = 0;
 
-        time_after_side_wall_collision = SIDE_WALL_COLLISION_TIMEOUT+EPSILON;
+        time_after_side_wall_collision = PLAYER_SIDE_WALL_COLLISION_TIMEOUT+EPSILON;
     }
 };
 
 /// Global game state ///
 static game_state_t  game_state;
-static player_t      player_box;
+static player_box_t  player_box;
 static level_t       current_level;
 
 /// Initialization and level switching functions ///
@@ -110,7 +114,7 @@ static vec2f_t locate_player_spawn();
 
 void initialize()
 {
-    player_box = player_t(vec2f_t(PLAYER_SIZE_X, PLAYER_SIZE_Y));
+    player_box = player_box_t(vec2f_t(PLAYER_SIZE_X, PLAYER_SIZE_Y));
     current_level = level_t(game_state.cur_level_idx, all_levels_params);
     current_level.init();
 
@@ -151,6 +155,144 @@ static void switch_level()
     current_level.init();
 
     reset_level();
+}
+
+/// ACT PHASE ///
+
+static void process_input();
+static void tick_physics(f32 dt);
+
+void act(f32 dt)
+{
+    if (is_key_pressed(VK_ESCAPE))
+        schedule_quit_game();
+
+    printf("%6.5f s per frame\n", dt);
+
+    process_input();
+    tick_physics(dt);
+
+    if (game_state.level_completed)
+        switch_level();
+    else if (game_state.player_died)
+        reset_level();
+}
+
+static void process_input()
+{
+    bool l_pressed = is_key_pressed(VK_LEFT);
+    bool r_pressed = is_key_pressed(VK_RIGHT);
+
+    // @TODO: merge it somewhere with the logic from tick
+    if (player_box.time_after_side_wall_collision < PLAYER_SIDE_WALL_COLLISION_TIMEOUT)
+        return;
+
+    game_state.movement_button_pressed = false;
+
+    // @TODO: refac and optimize boolean setting
+    if (l_pressed && !r_pressed) {
+        player_box.velocity.x = -PLAYER_LATERAL_SPEED;
+        game_state.movement_button_pressed = true;
+    } else if (r_pressed && !l_pressed) {
+        player_box.velocity.x = PLAYER_LATERAL_SPEED;
+        game_state.movement_button_pressed = true;
+    }
+}
+
+static void tick_player_movement();
+static void tick_moving_platforms_movement();
+static void resolve_player_collisions();
+
+static void tick_physics(f32 dt)
+{
+    game_state.fixed_dt += dt;
+
+    if (game_state.fixed_dt < PHYSICS_UPDATE_INTERVAL)
+        return;
+
+    tick_player_movement();
+    tick_moving_platforms_movement();
+
+    resolve_player_collisions();
+
+    game_state.fixed_dt = 0;
+}
+
+/// Movement ticking for all kinametic objects ///
+
+static void tick_player_movement()
+{
+    // @TEST
+    if (player_box.time_after_side_wall_collision < PLAYER_SIDE_WALL_COLLISION_TIMEOUT)
+        player_box.time_after_side_wall_collision += game_state.fixed_dt;
+
+    player_box.velocity += player_box.acceleration * game_state.fixed_dt;
+
+    // @HACK
+    f32 lateral_speed = player_box.velocity.x;
+    if (!game_state.movement_button_pressed && !FZERO(lateral_speed)) {
+        f32 d_speed = MIN(ABS(lateral_speed), PLAYER_LATERAL_DRAG * game_state.fixed_dt) * SGN(lateral_speed);
+        player_box.velocity.x -= d_speed;
+    }
+
+    player_box.rect.pos += player_box.velocity * game_state.fixed_dt;
+}
+
+static void tick_moving_platforms_movement()
+{
+    for (u32 i = 0; i < current_level.num_platforms(); i++) {
+        moving_platform_t *platform = current_level.get_platform(i);
+        
+        vec2f_t dest = platform->cur_goal();
+        vec2f_t to_dest = dest - platform->rect.pos;
+        f32 dist = to_dest.mag();
+        vec2f_t dir = to_dest.normalized();
+
+        f32 offset = MIN(dist, platform->speed() * game_state.fixed_dt);
+        platform->rect.pos += dir * offset;
+
+        if ((dest - platform->rect.pos).is_zero())
+            platform->inc_goal_idx();
+    }
+}
+
+/// Player box collision physics ///
+
+static void player_collect_intersecting_sectors();
+static void resolve_player_to_static_rect_collision(rect_t *s_rect);
+
+static void resolve_player_collisions()
+{
+    const static_geom_map_t *geom_map = current_level.geom_map();
+
+    // Calculate which sectors the player intersects with (up to 4)
+    player_collect_intersecting_sectors();
+
+    // Resolve collisions with static sectors
+    for (u32 i = 0; i < player_box.num_sectors; i++) {
+        u32 x = player_box.sectors[i].pos.x;
+        u32 y = player_box.sectors[i].pos.y;
+
+        switch ((*geom_map)[y][x]) {
+            case SURFACE_GLYPH:
+                resolve_player_to_static_rect_collision(&player_box.sectors[i]);
+                break;
+            case DANGER_GLYPH:
+                game_state.player_died = true;
+                break;
+            case EXIT_GLYPH:
+                game_state.level_completed = true;
+                break;
+            default:
+                break;
+        }
+    }
+
+    // Resolve collisions with moving platforms
+    for (u32 i = 0; i < current_level.num_platforms(); i++) {
+        moving_platform_t *platform = current_level.get_platform(i);
+        resolve_player_to_static_rect_collision(&platform->rect);
+    }
 }
 
 // Optimization to avoid checking all static sector collisions
@@ -214,160 +356,26 @@ static void resolve_player_to_static_rect_collision(rect_t *s_rect)
     //      to avoid this, I disable player_box-controlled movement for some time after
     //      a side wall collision
     if (FZERO(normal.x)) // horiz wall/surface
-        player_box.velocity.y = SGN(normal.y) * VERT_BOUNCE_VELOCITY;
+        player_box.velocity.y = SGN(normal.y) * PLAYER_VERT_BOUNCE_VELOCITY;
     else // vertical (side) wall/surface
         player_box.time_after_side_wall_collision = 0;
 }
 
-static void resolve_player_collisions()
+/// DRAW PHASE ///
+
+static void draw_rect(rect_t *r, u32 color);
+
+static void draw_static_geom();
+static void draw_moving_platforms();
+
+void draw()
 {
-    const static_geom_map_t *geom_map = current_level.geom_map();
-
-    for (u32 i = 0; i < player_box.num_sectors; i++) {
-        u32 x = player_box.sectors[i].pos.x;
-        u32 y = player_box.sectors[i].pos.y;
-
-        switch ((*geom_map)[y][x]) {
-            case SURFACE_GLYPH:
-                resolve_player_to_static_rect_collision(&player_box.sectors[i]);
-                break;
-            case DANGER_GLYPH:
-                game_state.player_died = true;
-                break;
-            case EXIT_GLYPH:
-                game_state.level_completed = true;
-                break;
-            default:
-                break;
-        }
-    }
-
-    for (u32 i = 0; i < current_level.num_platforms(); i++) {
-        moving_platform_t *platform = current_level.get_platform(i);
-        resolve_player_to_static_rect_collision(&platform->rect);
-    }
-}
-
-static void tick_player_movement()
-{
-    player_box.velocity += player_box.acceleration * game_state.fixed_dt;
-
-    // @HACK
-    f32 lateral_speed = player_box.velocity.x;
-    if (!game_state.movement_button_pressed && !FZERO(lateral_speed)) {
-        f32 d_speed = MIN(ABS(lateral_speed), PLAYER_LATERAL_DRAG * game_state.fixed_dt) * SGN(lateral_speed);
-        player_box.velocity.x -= d_speed;
-    }
-
-    player_box.rect.pos += player_box.velocity * game_state.fixed_dt;
-}
-
-static void tick_moving_platforms_movement()
-{
-    for (u32 i = 0; i < current_level.num_platforms(); i++) {
-        moving_platform_t *platform = current_level.get_platform(i);
-        
-        vec2f_t dest = platform->cur_goal();
-        vec2f_t to_dest = dest - platform->rect.pos;
-        f32 dist = to_dest.mag();
-        vec2f_t dir = to_dest.normalized();
-
-        f32 offset = MIN(dist, platform->speed() * game_state.fixed_dt);
-        platform->rect.pos += dir * offset;
-
-        if ((dest - platform->rect.pos).is_zero())
-            platform->inc_goal_idx();
-    }
-}
-
-static void tick_physics(f32 dt)
-{
-    game_state.fixed_dt += dt;
-
-    if (game_state.fixed_dt < PHYSICS_UPDATE_INTERVAL)
-        return;
-
-    // @TEST
-    if (player_box.time_after_side_wall_collision < SIDE_WALL_COLLISION_TIMEOUT)
-        player_box.time_after_side_wall_collision += game_state.fixed_dt;
-
-    tick_player_movement();
-    tick_moving_platforms_movement();
-
-    player_collect_intersecting_sectors();
-    resolve_player_collisions();
-
-    game_state.fixed_dt = 0;
-}
-
-static void process_input()
-{
-    bool l_pressed = is_key_pressed(VK_LEFT);
-    bool r_pressed = is_key_pressed(VK_RIGHT);
-
-    // @TEST
-    if (player_box.time_after_side_wall_collision < SIDE_WALL_COLLISION_TIMEOUT)
-        return;
-
-    game_state.movement_button_pressed = false;
-
-    // @TODO: refac and optimize boolean setting
-    if (l_pressed && !r_pressed) {
-        player_box.velocity.x = -PLAYER_LATERAL_SPEED;
-        game_state.movement_button_pressed = true;
-    } else if (r_pressed && !l_pressed) {
-        player_box.velocity.x = PLAYER_LATERAL_SPEED;
-        game_state.movement_button_pressed = true;
-    }
-}
-
-// this function is called to update game data,
-// dt - time elapsed since the previous update (in seconds)
-void act(f32 dt)
-{
-    if (is_key_pressed(VK_ESCAPE))
-        schedule_quit_game();
-
-    printf("%6.5f s per frame\n", dt);
-
-    process_input();
-    tick_physics(dt);
-
-    if (game_state.level_completed)
-        switch_level();
-    else if (game_state.player_died)
-        reset_level();
-}
-
-static void draw_rect(rect_t *r, u32 color)
-{
-    u32 screen_pos_x = r->pos.x*SECTOR_PIX_SIZE;
-    u32 screen_pos_y = r->pos.y*SECTOR_PIX_SIZE;
-    if (screen_pos_x > SCREEN_WIDTH-1 || screen_pos_y > SCREEN_HEIGHT-1)
-        return;
-
-    u32 screen_size_x = r->size.x*SECTOR_PIX_SIZE;
-    u32 screen_size_y = r->size.y*SECTOR_PIX_SIZE;
-
-    if (screen_pos_x < 0) {
-        screen_size_x += screen_pos_x;
-        screen_pos_x = 0;
-    } else if (screen_pos_x > SCREEN_WIDTH-screen_size_x)
-        screen_size_x = SCREEN_WIDTH-screen_pos_x;
-    if (screen_pos_y < 0) {
-        screen_size_y += screen_pos_y;
-        screen_pos_y = 0;
-    } else if (screen_pos_y > SCREEN_HEIGHT-screen_size_y)
-        screen_size_y = SCREEN_HEIGHT-screen_pos_y;
-
-    ASSERT(screen_pos_x >= 0 && screen_pos_x+screen_size_x <= SCREEN_WIDTH);
-    ASSERT(screen_pos_y >= 0 && screen_pos_y+screen_size_y <= SCREEN_HEIGHT); 
-
-    for (u32 y = screen_pos_y; y < screen_pos_y+screen_size_y; y++) {
-        u32 *pixel = buffer[y] + screen_pos_x;
-        for (u32 x = screen_pos_x; x < screen_pos_x+screen_size_x; x++)
-            *(pixel++) = color;
-    }
+    // clear backbuffer
+    memset(buffer, 0, SCREEN_HEIGHT * SCREEN_WIDTH * sizeof(u32));
+    draw_static_geom();
+    draw_moving_platforms();
+    // @TODO: draw collectables
+    draw_rect(&player_box.rect, PLAYER_COLOR);
 }
 
 static void draw_static_geom()
@@ -408,24 +416,39 @@ static void draw_moving_platforms()
     }
 }
 
-static inline void draw_player()
+static void draw_rect(rect_t *r, u32 color)
 {
-    draw_rect(&player_box.rect, PLAYER_COLOR);
+    u32 screen_pos_x = r->pos.x*SECTOR_PIX_SIZE;
+    u32 screen_pos_y = r->pos.y*SECTOR_PIX_SIZE;
+    if (screen_pos_x > SCREEN_WIDTH-1 || screen_pos_y > SCREEN_HEIGHT-1)
+        return;
+
+    u32 screen_size_x = r->size.x*SECTOR_PIX_SIZE;
+    u32 screen_size_y = r->size.y*SECTOR_PIX_SIZE;
+
+    if (screen_pos_x < 0) {
+        screen_size_x += screen_pos_x;
+        screen_pos_x = 0;
+    } else if (screen_pos_x > SCREEN_WIDTH-screen_size_x)
+        screen_size_x = SCREEN_WIDTH-screen_pos_x;
+    if (screen_pos_y < 0) {
+        screen_size_y += screen_pos_y;
+        screen_pos_y = 0;
+    } else if (screen_pos_y > SCREEN_HEIGHT-screen_size_y)
+        screen_size_y = SCREEN_HEIGHT-screen_pos_y;
+
+    ASSERT(screen_pos_x >= 0 && screen_pos_x+screen_size_x <= SCREEN_WIDTH);
+    ASSERT(screen_pos_y >= 0 && screen_pos_y+screen_size_y <= SCREEN_HEIGHT); 
+
+    for (u32 y = screen_pos_y; y < screen_pos_y+screen_size_y; y++) {
+        u32 *pixel = buffer[y] + screen_pos_x;
+        for (u32 x = screen_pos_x; x < screen_pos_x+screen_size_x; x++)
+            *(pixel++) = color;
+    }
 }
 
-// fill buffer in this function
-// uint32_t buffer[SCREEN_HEIGHT][SCREEN_WIDTH] - is an array of 32-bit colors (8 bits per R, G, B)
-void draw()
-{
-    // clear backbuffer
-    memset(buffer, 0, SCREEN_HEIGHT * SCREEN_WIDTH * sizeof(u32));
-    draw_static_geom();
-    draw_moving_platforms();
-    // @TODO: draw collectables
-    draw_player();
-}
+/// Game deinitialization ///
 
-// free game data in this function
 void finalize()
 {
     current_level.cleanup();
