@@ -1,4 +1,4 @@
-#include "Rect.h"
+#include "Geom.h"
 #include "Utils.h"
 
 bool intersect_ray_with_rect(vec2f_t orig, vec2f_t dir, rect_t *rect, f32 *tmin, vec2f_t *normal_out)

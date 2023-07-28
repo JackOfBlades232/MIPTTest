@@ -1,5 +1,6 @@
 #include "Level.h"
 
+
 void level_t::init()
 {
     this->platforms = (moving_platform_t *) malloc(
@@ -17,12 +18,12 @@ void level_t::init()
             if ((*this->geom_map())[y][x] == COLLECTABLE_GLYPH) {
                 ASSERTF(i < this->num_collectables(), "Collectable num setting does not match their real number\n");
 
-                f32 pos_x = (f32) x + 0.5 - COLLECTABLE_SIZE_X/2;
-                f32 pos_y = (f32) y + 0.5 - COLLECTABLE_SIZE_Y/2;
+                f32 pos_x = (f32) x + 0.5;
+                f32 pos_y = (f32) y + 0.5;
 
                 this->collectables[i++] = collectable_t(
-                        vec2f_t(pos_x, pos_y),
-                        vec2f_t(COLLECTABLE_SIZE_X, COLLECTABLE_SIZE_Y),
+                        vec2f_t(pos_x, pos_y), COLLECTABLE_RAD,
+                        vec2f_t(0, -COLLECTABLE_INIT_SPEED), 
                         vec2f_t(0, COLLECTABLE_ACCELERATION)
                         );
             }
@@ -47,4 +48,6 @@ void level_t::reset()
 {
     for (u32 i = 0; i < this->num_platforms(); i++)
         this->platforms[i].reset();
+    for (u32 i = 0; i < this->num_collectables(); i++)
+        this->collectables[i].reset();
 }

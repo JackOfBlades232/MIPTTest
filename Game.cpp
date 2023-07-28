@@ -1,6 +1,6 @@
 #include "Engine.h"
 #include "Vec.h"
-#include "Rect.h"
+#include "Geom.h"
 #include "Level.h"
 #include "Params.h"
 #include "LevelSettings.h"
@@ -27,6 +27,7 @@
 // @TODO: win UI
 // @TODO: game-design multiple levels
 
+// @TODO: remake drawing so that if resolution is bigger it is offset to the center
 // @TODO: refac
 
 // Optional
@@ -197,6 +198,7 @@ static void process_input()
 
 static void tick_player_movement();
 static void tick_moving_platforms_movement();
+static void tick_collectables_movement();
 static void resolve_player_collisions();
 
 static void tick_physics(f32 dt)
@@ -208,6 +210,7 @@ static void tick_physics(f32 dt)
 
     tick_player_movement();
     tick_moving_platforms_movement();
+    tick_collectables_movement();
 
     resolve_player_collisions();
 
@@ -252,6 +255,32 @@ static void tick_moving_platforms_movement()
     }
 }
 
+static void tick_collectables_movement()
+{
+    for (u32 i = 0; i < current_level.num_collectables(); i++) {
+        collectable_t *collectable = current_level.get_collectable(i);
+
+        collectable->time_since_changed_direction += game_state.fixed_dt;
+        if (collectable->time_since_changed_direction >= COLLECTABLE_PERIOD) {
+            f32 excess_time = collectable->time_since_changed_direction - COLLECTABLE_PERIOD;
+            f32 prev_time = game_state.fixed_dt - excess_time;
+
+            collectable->velocity += collectable->acceleration * prev_time;
+            collectable->shape.center += collectable->velocity * prev_time;
+
+            collectable->acceleration = -collectable->acceleration;
+            
+            collectable->velocity += collectable->acceleration * excess_time;
+            collectable->shape.center += collectable->velocity * excess_time;
+
+            collectable->time_since_changed_direction = excess_time;
+        } else {
+            collectable->velocity += collectable->acceleration * game_state.fixed_dt;
+            collectable->shape.center += collectable->velocity * game_state.fixed_dt;
+        }
+    }
+}
+
 /// Player box collision physics ///
 
 static void player_collect_intersecting_sectors();
@@ -288,6 +317,18 @@ static void resolve_player_collisions()
     for (u32 i = 0; i < current_level.num_platforms(); i++) {
         moving_platform_t *platform = current_level.get_platform(i);
         resolve_player_to_static_rect_collision(&platform->rect);
+    }
+
+    // Resolve collisions with collectables
+    for (u32 i = 0; i < current_level.num_collectables(); i++) {
+        collectable_t *collectable = current_level.get_collectable(i);
+        if (collectable->was_collected)
+            continue;
+
+        if (circle_and_rect_are_intersecting(&collectable->shape, &player_box.rect)) {
+            collectable->was_collected = true;
+            // @TODO: increment score, spawn PS
+        }
     }
 }
 
@@ -360,6 +401,7 @@ static void resolve_player_to_static_rect_collision(rect_t *s_rect)
 /// DRAW PHASE ///
 
 static void draw_rect(rect_t *r, u32 color);
+static void draw_circle(circle_t *c, u32 color);
 
 static void draw_static_geom();
 static void draw_moving_platforms();
@@ -371,7 +413,7 @@ void draw()
     memset(buffer, 0, SCREEN_HEIGHT * SCREEN_WIDTH * sizeof(u32));
     draw_static_geom();
     draw_moving_platforms();
-    // @TODO: draw collectables
+    draw_collectables();
     draw_rect(&player_box.rect, PLAYER_COLOR);
 }
 
@@ -413,6 +455,17 @@ static void draw_moving_platforms()
     }
 }
 
+static void draw_collectables()
+{
+    for (u32 i = 0; i < current_level.num_collectables(); i++) {
+        collectable_t *collectable = current_level.get_collectable(i);
+        if (collectable->was_collected)
+            continue;
+
+        draw_circle(&collectable->shape, COLLECTABLE_COLOR);
+    }
+}
+
 static void draw_rect(rect_t *r, u32 color)
 {
     u32 screen_pos_x = r->pos.x*SECTOR_PIX_SIZE;
@@ -444,19 +497,31 @@ static void draw_rect(rect_t *r, u32 color)
     }
 }
 
-static void draw_diamond(rect_t *rect, u32 color);
-
-static void draw_collectables()
+static void draw_circle(circle_t *c, u32 color)
 {
-    for (u32 i = 0; i < current_level.num_collectables(); i++) {
-        collectable_t *collectable = current_level.get_collectable(i);
-        draw_diamond(&collectable->rect, COLLECTABLE_COLOR);
+    vec2f_t screen_center = c->center*SECTOR_PIX_SIZE;
+    f32 screen_rad = c->rad*SECTOR_PIX_SIZE;
+
+    f32 r2 = screen_rad * screen_rad;
+    f32 rel_y = screen_rad-EPSILON;
+    f32 rel_y2 = rel_y*rel_y;
+
+    u32 min_y = MAX(screen_center.y - screen_rad, 0);
+    u32 max_y = MIN(screen_center.y + screen_rad, SCREEN_HEIGHT-1);
+
+    for (u32 y = min_y; y <= max_y; y++) {
+        f32 off_x = floor(sqrt(r2 - rel_y2));
+
+        u32 min_x = MAX(screen_center.x - off_x, 0);
+        u32 max_x = MIN(screen_center.x + off_x, SCREEN_WIDTH-1);
+        u32 *pixel = buffer[y] + min_x;
+
+        for (u32 x = min_x; x <= max_x; x++)
+            *(pixel++) = color;
+
+        rel_y2 -= 2*rel_y - 1;
+        rel_y--;
     }
-}
-
-static void draw_diamond(rect_t *rect, u32 color)
-{
-    // @TODO: implement diamond drawing
 }
 
 /// Game deinitialization ///

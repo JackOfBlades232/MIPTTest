@@ -1,7 +1,7 @@
 #pragma once
 #include "Params.h"
 #include "Vec.h"
-#include "Rect.h"
+#include "Geom.h"
 #include <stdlib.h>
 
 /// Param types for static config ///
@@ -47,16 +47,32 @@ struct moving_platform_t {
 };
 
 struct collectable_t {
-    rect_t rect;
-    bool collected;
+    circle_t shape;
+    bool was_collected;
 
     // For up-down movement
     vec2f_t velocity;
     vec2f_t acceleration;
     f32 time_since_changed_direction;
 
-    inline collectable_t(vec2f_t pos, vec2f_t size, vec2f_t acceleration) :
-        rect(pos, size), collected(false), velocity(), acceleration(acceleration), time_since_changed_direction(0) {}
+    vec2f_t init_pos;
+    vec2f_t init_velocity;
+    vec2f_t init_acc;
+
+    inline collectable_t(vec2f_t pos, f32 rad, vec2f_t velocity, vec2f_t acceleration) :
+        shape(pos, rad), was_collected(false), velocity(velocity), 
+        acceleration(acceleration), time_since_changed_direction(0),
+        init_pos(pos), init_velocity(velocity), init_acc(acceleration) {}
+
+    inline void reset() 
+    { 
+        shape.center = init_pos; 
+        velocity = init_velocity; 
+        acceleration = init_acc; 
+
+        was_collected = false; 
+        time_since_changed_direction = 0; 
+    }
 };
 
 struct level_t {
