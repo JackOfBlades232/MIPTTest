@@ -22,7 +22,6 @@
 //  schedule_quit_game() - quit game after act()
 
 
-// @TODO: collectables
 // @TODO: font rendering & score
 // @TODO: win UI
 // @TODO: game-design multiple levels
