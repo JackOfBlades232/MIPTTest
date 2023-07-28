@@ -1,6 +1,5 @@
 #include "Level.h"
 
-
 void level_t::init()
 {
     this->platforms = (moving_platform_t *) malloc(

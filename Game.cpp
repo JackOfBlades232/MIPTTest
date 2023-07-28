@@ -12,26 +12,10 @@
 #include <math.h>
 #include <memory.h>
 
-//
-//  You are free to modify this file
-//
-
-//  is_key_pressed(int button_vk_code) - check if a key is pressed,
-//                                       use keycodes (VK_SPACE, VK_RIGHT, VK_LEFT, VK_UP, VK_DOWN, VK_RETURN)
-//
-//  get_cursor_x(), get_cursor_y() - get mouse cursor position
-//  is_mouse_button_pressed(int button) - check if mouse button is pressed (0 - left button, 1 - right button)
-//  schedule_quit_game() - quit game after act()
-
-
 // @TODO: game-design multiple levels
 // @TODO: tweak params and test that all holds
-// @TODO: remake win ui to reactive drawing (once)
 
-// @TODO: remake drawing so that if resolution is bigger it is offset to the center
-// @TODO: rename time_since/after to seconds?
 // @TODO: refac
-// @TODO: clean up font
 
 /// Global structures ///
 
@@ -44,7 +28,7 @@ struct game_state_t {
     game_fsm_state_t state;
 
     f32  fixed_dt;
-    f32  time_since_level_start;
+    f32  seconds_since_level_start;
 
     bool movement_button_pressed;
 
@@ -57,15 +41,15 @@ struct game_state_t {
     bool level_completed;
     bool player_died;
 
-    inline game_state_t() : state(fsm_game), fixed_dt(0), time_since_level_start(0), movement_button_pressed(false), 
+    inline game_state_t() : state(fsm_game), fixed_dt(0), seconds_since_level_start(0), movement_button_pressed(false), 
         cur_level_idx(0), score(0), prev_score(0), max_score(0), level_completed(false), player_died(false) {}
-    inline game_state_t(u32 max_score) : state(fsm_game), fixed_dt(0), time_since_level_start(0), movement_button_pressed(false), 
+    inline game_state_t(u32 max_score) : state(fsm_game), fixed_dt(0), seconds_since_level_start(0), movement_button_pressed(false), 
         cur_level_idx(0), score(0), prev_score(0), max_score(max_score), level_completed(false), player_died(false) {}
 
     void reset()
     {
         fixed_dt = 0;
-        time_since_level_start = 0;
+        seconds_since_level_start = 0;
         score = prev_score;
         movement_button_pressed = false;
         level_completed = false;
@@ -90,13 +74,13 @@ struct player_box_t {
 
     u32      num_sectors;
     rect_t   sectors[4];
-    f32      time_after_side_wall_collision;
+    f32      seconds_after_side_wall_collision;
 
     inline player_box_t() : rect(), velocity(), acceleration(), half_size(),
-        num_sectors(0), sectors(), time_after_side_wall_collision(0) {}
+        num_sectors(0), sectors(), seconds_after_side_wall_collision(0) {}
     inline player_box_t(vec2f_t size) :
         rect(vec2f_t(), size), velocity(), acceleration(),
-        num_sectors(0), sectors(), time_after_side_wall_collision(0)
+        num_sectors(0), sectors(), seconds_after_side_wall_collision(0)
     {
         half_size = rect.size/2;
     }
@@ -109,7 +93,7 @@ struct player_box_t {
 
         num_sectors = 0;
 
-        time_after_side_wall_collision = PLAYER_SIDE_WALL_COLLISION_TIMEOUT+EPSILON;
+        seconds_after_side_wall_collision = PLAYER_SIDE_WALL_COLLISION_TIMEOUT+EPSILON;
     }
 };
 
@@ -194,7 +178,7 @@ void act(f32 dt)
     switch (game_state.state) {
         case fsm_game:
             {
-                game_state.time_since_level_start += dt;
+                game_state.seconds_since_level_start += dt;
 
                 process_input();
                 tick_physics(dt);
@@ -224,12 +208,11 @@ static void process_input()
     bool r_pressed = is_key_pressed(VK_RIGHT);
 
     // @TODO: merge it somewhere with the logic from tick
-    if (player_box.time_after_side_wall_collision < PLAYER_SIDE_WALL_COLLISION_TIMEOUT)
+    if (player_box.seconds_after_side_wall_collision < PLAYER_SIDE_WALL_COLLISION_TIMEOUT)
         return;
 
     game_state.movement_button_pressed = false;
 
-    // @TODO: refac and optimize boolean setting
     if (l_pressed && !r_pressed) {
         player_box.velocity.x = -PLAYER_LATERAL_SPEED;
         game_state.movement_button_pressed = true;
@@ -265,8 +248,8 @@ static void tick_physics(f32 dt)
 static void tick_player_movement()
 {
     // @TEST
-    if (player_box.time_after_side_wall_collision < PLAYER_SIDE_WALL_COLLISION_TIMEOUT)
-        player_box.time_after_side_wall_collision += game_state.fixed_dt;
+    if (player_box.seconds_after_side_wall_collision < PLAYER_SIDE_WALL_COLLISION_TIMEOUT)
+        player_box.seconds_after_side_wall_collision += game_state.fixed_dt;
 
     player_box.velocity += player_box.acceleration * game_state.fixed_dt;
 
@@ -303,9 +286,9 @@ static void tick_collectables_movement()
     for (u32 i = 0; i < current_level.num_collectables(); i++) {
         collectable_t *collectable = current_level.get_collectable(i);
 
-        collectable->time_since_changed_direction += game_state.fixed_dt;
-        if (collectable->time_since_changed_direction >= COLLECTABLE_PERIOD) {
-            f32 excess_time = collectable->time_since_changed_direction - COLLECTABLE_PERIOD;
+        collectable->seconds_since_changed_direction += game_state.fixed_dt;
+        if (collectable->seconds_since_changed_direction >= COLLECTABLE_PERIOD) {
+            f32 excess_time = collectable->seconds_since_changed_direction - COLLECTABLE_PERIOD;
             f32 prev_time = game_state.fixed_dt - excess_time;
 
             collectable->velocity += collectable->acceleration * prev_time;
@@ -316,7 +299,7 @@ static void tick_collectables_movement()
             collectable->velocity += collectable->acceleration * excess_time;
             collectable->shape.center += collectable->velocity * excess_time;
 
-            collectable->time_since_changed_direction = excess_time;
+            collectable->seconds_since_changed_direction = excess_time;
         } else {
             collectable->velocity += collectable->acceleration * game_state.fixed_dt;
             collectable->shape.center += collectable->velocity * game_state.fixed_dt;
@@ -439,7 +422,7 @@ static void resolve_player_to_static_rect_collision(rect_t *s_rect)
     if (FZERO(normal.x)) // horiz wall/surface
         player_box.velocity.y = SGN(normal.y) * PLAYER_VERT_BOUNCE_VELOCITY;
     else // vertical (side) wall/surface
-        player_box.time_after_side_wall_collision = 0;
+        player_box.seconds_after_side_wall_collision = 0;
 }
 
 /// DRAW PHASE ///
@@ -462,12 +445,13 @@ void draw()
                 draw_rect(&player_box.rect, PLAYER_COLOR);
 
                 ui_draw_score(game_state.score);
-                ui_draw_timer(game_state.time_since_level_start);
+                ui_draw_timer(game_state.seconds_since_level_start);
             }
             break;
 
         case fsm_win_scren:
             {
+                // Now it is a static picture drawn every frame, not too optimal
                 ui_draw_win_screen();
             }
             break;

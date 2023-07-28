@@ -3,8 +3,6 @@
 
 bool intersect_ray_with_rect(vec2f_t orig, vec2f_t dir, rect_t *rect, f32 *tmin, vec2f_t *normal_out)
 {
-    // @TODO: calculate normal (and hit point? and discard t_max?)
-
     vec2f_t r_min = rect->pos;
     vec2f_t r_max = rect->pos + rect->size;
 

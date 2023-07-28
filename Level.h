@@ -53,7 +53,7 @@ struct collectable_t {
     // For up-down movement
     vec2f_t velocity;
     vec2f_t acceleration;
-    f32 time_since_changed_direction;
+    f32 seconds_since_changed_direction;
 
     vec2f_t init_pos;
     vec2f_t init_velocity;
@@ -61,7 +61,7 @@ struct collectable_t {
 
     inline collectable_t(vec2f_t pos, f32 rad, vec2f_t velocity, vec2f_t acceleration) :
         shape(pos, rad), was_collected(false), velocity(velocity), 
-        acceleration(acceleration), time_since_changed_direction(0),
+        acceleration(acceleration), seconds_since_changed_direction(0),
         init_pos(pos), init_velocity(velocity), init_acc(acceleration) {}
 
     inline void reset() 
@@ -71,7 +71,7 @@ struct collectable_t {
         acceleration = init_acc; 
 
         was_collected = false; 
-        time_since_changed_direction = 0; 
+        seconds_since_changed_direction = 0; 
     }
 };
 
