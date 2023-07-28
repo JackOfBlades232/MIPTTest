@@ -1,7 +1,9 @@
 #include "Engine.h"
-#include "Vec.h"
-#include "Geom.h"
 #include "Level.h"
+#include "Ui.h"
+#include "Draw.h"
+#include "Geom.h"
+#include "Vec.h"
 #include "Params.h"
 #include "LevelSettings.h"
 #include "Utils.h"
@@ -22,47 +24,60 @@
 //  schedule_quit_game() - quit game after act()
 
 
-// @TODO: font rendering & score
-// @TODO: win UI
 // @TODO: game-design multiple levels
+// @TODO: tweak params and test that all holds
+// @TODO: remake win ui to reactive drawing (once)
 
 // @TODO: remake drawing so that if resolution is bigger it is offset to the center
+// @TODO: rename time_since/after to seconds?
 // @TODO: refac
-
-// Optional
-// - Saves
-// - Particles&textures for collectables
-// - Loading levels from files
-// - Main menu with sidescrolling choice of levels (with static geom miniatures)
-
-/// Engine-specific defines ///
-
-#define BYTES_PER_PIXEL 4
-#define IMAGE_PITCH     SCREEN_WIDTH * BYTES_PER_PIXEL
-
-#define SECTOR_PIX_SIZE MIN(SCREEN_WIDTH/GEOM_WIDTH, SCREEN_HEIGHT/GEOM_HEIGHT)
+// @TODO: clean up font
 
 /// Global structures ///
 
+enum game_fsm_state_t {
+    fsm_game,
+    fsm_win_scren
+};
+
 struct game_state_t {
+    game_fsm_state_t state;
+
     f32  fixed_dt;
+    f32  time_since_level_start;
 
     bool movement_button_pressed;
 
     u32  cur_level_idx;
 
+    u32 score;
+    u32 prev_score;
+    u32 max_score;
+
     bool level_completed;
     bool player_died;
 
-    inline game_state_t() : fixed_dt(0), movement_button_pressed(false), 
-        cur_level_idx(0), level_completed(false), player_died(false) {}
+    inline game_state_t() : state(fsm_game), fixed_dt(0), time_since_level_start(0), movement_button_pressed(false), 
+        cur_level_idx(0), score(0), prev_score(0), max_score(0), level_completed(false), player_died(false) {}
+    inline game_state_t(u32 max_score) : state(fsm_game), fixed_dt(0), time_since_level_start(0), movement_button_pressed(false), 
+        cur_level_idx(0), score(0), prev_score(0), max_score(max_score), level_completed(false), player_died(false) {}
 
     void reset()
     {
         fixed_dt = 0;
+        time_since_level_start = 0;
+        score = prev_score;
         movement_button_pressed = false;
         level_completed = false;
         player_died = false;
+    }
+
+    void full_reset()
+    {
+        state = fsm_game;
+        prev_score = 0;
+        cur_level_idx = 0;
+        reset();
     }
 };
 
@@ -99,8 +114,7 @@ struct player_box_t {
 };
 
 /// Global game state ///
-static game_state_t  game_state;
-static player_box_t  player_box;
+static game_state_t  game_state; static player_box_t  player_box;
 static level_t       current_level;
 
 /// Initialization and level switching functions ///
@@ -110,10 +124,13 @@ static vec2f_t locate_player_spawn();
 
 void initialize()
 {
+    game_state = game_state_t(ui_get_max_displayabe_score());
     player_box = player_box_t(vec2f_t(PLAYER_SIZE_X, PLAYER_SIZE_Y));
+
     current_level = level_t(game_state.cur_level_idx, all_levels_params);
     current_level.init();
 
+    game_state.full_reset();
     reset_level();
 }
 
@@ -143,14 +160,23 @@ static vec2f_t locate_player_spawn()
 
 static void switch_level()
 {
-    if (++game_state.cur_level_idx >= LEVEL_CNT)
-        game_state.cur_level_idx -= LEVEL_CNT;
+    game_state.prev_score = game_state.score;
 
     current_level.cleanup();
     current_level = level_t(game_state.cur_level_idx, all_levels_params);
     current_level.init();
 
     reset_level();
+}
+
+static void increment_level()
+{
+    game_state.cur_level_idx++;
+    if (game_state.cur_level_idx >= LEVEL_CNT) {
+        current_level.cleanup();
+        game_state.state = fsm_win_scren;
+    } else
+        switch_level();
 }
 
 /// ACT PHASE ///
@@ -165,13 +191,31 @@ void act(f32 dt)
 
     printf("%6.5f s per frame\n", dt);
 
-    process_input();
-    tick_physics(dt);
+    switch (game_state.state) {
+        case fsm_game:
+            {
+                game_state.time_since_level_start += dt;
 
-    if (game_state.level_completed)
-        switch_level();
-    else if (game_state.player_died)
-        reset_level();
+                process_input();
+                tick_physics(dt);
+
+                if (game_state.level_completed)
+                    increment_level();
+                else if (game_state.player_died)
+                    reset_level();
+            }
+            break;
+
+        case fsm_win_scren:
+            {
+                if (is_key_pressed(VK_RETURN)) {
+                    game_state.full_reset();
+                    switch_level();
+                }
+            }
+            break;
+    }
+
 }
 
 static void process_input()
@@ -326,7 +370,8 @@ static void resolve_player_collisions()
 
         if (circle_and_rect_are_intersecting(&collectable->shape, &player_box.rect)) {
             collectable->was_collected = true;
-            // @TODO: increment score, spawn PS
+            if (game_state.score < game_state.max_score)
+                game_state.score++;
         }
     }
 }
@@ -399,9 +444,6 @@ static void resolve_player_to_static_rect_collision(rect_t *s_rect)
 
 /// DRAW PHASE ///
 
-static void draw_rect(rect_t *r, u32 color);
-static void draw_circle(circle_t *c, u32 color);
-
 static void draw_static_geom();
 static void draw_moving_platforms();
 static void draw_collectables();
@@ -410,10 +452,26 @@ void draw()
 {
     // clear backbuffer
     memset(buffer, 0, SCREEN_HEIGHT * SCREEN_WIDTH * sizeof(u32));
-    draw_static_geom();
-    draw_moving_platforms();
-    draw_collectables();
-    draw_rect(&player_box.rect, PLAYER_COLOR);
+
+    switch (game_state.state) {
+        case fsm_game:
+            {
+                draw_static_geom();
+                draw_moving_platforms();
+                draw_collectables();
+                draw_rect(&player_box.rect, PLAYER_COLOR);
+
+                ui_draw_score(game_state.score);
+                ui_draw_timer(game_state.time_since_level_start);
+            }
+            break;
+
+        case fsm_win_scren:
+            {
+                ui_draw_win_screen();
+            }
+            break;
+    }
 }
 
 static void draw_static_geom()
@@ -462,64 +520,6 @@ static void draw_collectables()
             continue;
 
         draw_circle(&collectable->shape, COLLECTABLE_COLOR);
-    }
-}
-
-static void draw_rect(rect_t *r, u32 color)
-{
-    u32 screen_pos_x = r->pos.x*SECTOR_PIX_SIZE;
-    u32 screen_pos_y = r->pos.y*SECTOR_PIX_SIZE;
-    if (screen_pos_x > SCREEN_WIDTH-1 || screen_pos_y > SCREEN_HEIGHT-1)
-        return;
-
-    u32 screen_size_x = r->size.x*SECTOR_PIX_SIZE;
-    u32 screen_size_y = r->size.y*SECTOR_PIX_SIZE;
-
-    if (screen_pos_x < 0) {
-        screen_size_x += screen_pos_x;
-        screen_pos_x = 0;
-    } else if (screen_pos_x > SCREEN_WIDTH-screen_size_x)
-        screen_size_x = SCREEN_WIDTH-screen_pos_x;
-    if (screen_pos_y < 0) {
-        screen_size_y += screen_pos_y;
-        screen_pos_y = 0;
-    } else if (screen_pos_y > SCREEN_HEIGHT-screen_size_y)
-        screen_size_y = SCREEN_HEIGHT-screen_pos_y;
-
-    ASSERT(screen_pos_x >= 0 && screen_pos_x+screen_size_x <= SCREEN_WIDTH);
-    ASSERT(screen_pos_y >= 0 && screen_pos_y+screen_size_y <= SCREEN_HEIGHT); 
-
-    for (u32 y = screen_pos_y; y < screen_pos_y+screen_size_y; y++) {
-        u32 *pixel = buffer[y] + screen_pos_x;
-        for (u32 x = screen_pos_x; x < screen_pos_x+screen_size_x; x++)
-            *(pixel++) = color;
-    }
-}
-
-static void draw_circle(circle_t *c, u32 color)
-{
-    vec2f_t screen_center = c->center*SECTOR_PIX_SIZE;
-    f32 screen_rad = c->rad*SECTOR_PIX_SIZE;
-
-    f32 r2 = screen_rad * screen_rad;
-    f32 rel_y = screen_rad-EPSILON;
-    f32 rel_y2 = rel_y*rel_y;
-
-    u32 min_y = MAX(screen_center.y - screen_rad, 0);
-    u32 max_y = MIN(screen_center.y + screen_rad, SCREEN_HEIGHT-1);
-
-    for (u32 y = min_y; y <= max_y; y++) {
-        f32 off_x = floor(sqrt(r2 - rel_y2));
-
-        u32 min_x = MAX(screen_center.x - off_x, 0);
-        u32 max_x = MIN(screen_center.x + off_x, SCREEN_WIDTH-1);
-        u32 *pixel = buffer[y] + min_x;
-
-        for (u32 x = min_x; x <= max_x; x++)
-            *(pixel++) = color;
-
-        rel_y2 -= 2*rel_y - 1;
-        rel_y--;
     }
 }
 

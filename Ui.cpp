@@ -1,75 +1,143 @@
 #include "Ui.h"
+#include "FontAtlas.h"
 #include "Params.h"
+#include "Draw.h"
+#include "Geom.h"
+#include "Utils.h"
 
-#define GLYPHS_CNT              '~'-' '+1
-#define GLYPHS_PER_ROW          18
-#define GLYPH_ROWS              GLYPHS_CNT / GLYPHS_PER_ROW
+static const rect_t score_rect_template( 
+        (SCORE_PLACK_X+SCORE_PLACK_DIGITS-1) * UI_CHAR_SIZE_X, SCORE_PLACK_Y * UI_CHAR_SIZE_Y,
+        UI_CHAR_SIZE_X, UI_CHAR_SIZE_Y
+        );
+static const rect_t timer_rect_template( 
+        (TIMER_X+TIMER_FMT_LEN-1) * UI_CHAR_SIZE_X, TIMER_Y * UI_CHAR_SIZE_Y,
+        UI_CHAR_SIZE_X, UI_CHAR_SIZE_Y
+        );
 
-#define FONT_ATLAS_GLYPH_WIDTH  14
-#define FONT_ATLAS_GLYPH_HEIGHT 8
+static const rect_t win_screen_bg_rect(
+        WIN_SCREEN_BG_X, WIN_SCREEN_BG_Y, WIN_SCREEN_BG_SIZE_X, WIN_SCREEN_BG_SIZE_Y
+        );
+static const rect_t win_screen_line1_rect_template(
+        WIN_SCREEN_LINE1_X, WIN_SCREEN_BG_Y + WIN_SCREEN_LINE1_OFF,
+        WIN_UI_CHAR_SIZE_X, WIN_UI_CHAR_SIZE_Y
+        );
+static const rect_t win_screen_line2_rect_template(
+        WIN_SCREEN_LINE2_X, WIN_SCREEN_BG_Y + WIN_SCREEN_LINE2_OFF,
+        WIN_UI_CHAR_SIZE_X, WIN_UI_CHAR_SIZE_Y
+        );
 
-#define FONT_ATLAS_WIDTH        FONT_ATLAS_GLYPH_WIDTH * GLYPHS_PER_ROW
-#define FONT_ATLAS_HEIGHT       FONT_ATLAS_GLYPH_HEIGHT * GLYPH_ROWS
-
-static const char font_atlas[FONT_ATLAS_HEIGHT][FONT_ATLAS_WIDTH+1] = {
-    "                                                                                                                                                                                                                                                            ",
-    "                  :&&:        :&&..&&:      :&&..&&:        ~@&~      :&@@&:          ^#@@@@&:        :&&:            ^&#:      :#&^                                                                                              ^#@@@@B^        ~@&:      ",
-    "                  :&&:        .BB..BB.      !@&^^&@!      ~B@@@&&@B.  .G@@G.  ~&#.  :@@.  ~#B.        .BB.          ~&#.          .#&~      .B#:^@@^:#B.      :@@:                                                        ~&#.  :@&:    !@&:    ~B@@&:      ",
-    "                  :&&:                    .P@@@&&@@@P.  .B#^~&@!           .7#B.    .PG~~BG.                      :@@.              .@@:      !&@@@@&!     .:.7@@7.:.                  .^::::::^.                      .7#B.    :&&. .!B@@&:  .BB .&&:      ",
-    "                  :@@:                     .?@&!!&@?.      Y&@@&P7:      :?#P        .!BB7.  ^^                   :@@.              .@@:    .5&@@@@@@&5.  .P&#&@@&#&P.       ::       .P&&####&&P.                   :?#P.      :&@?!BP .&&:      :&&:      ",
-    "                  .JJ.                    .Y&@@##@@&Y.   ~7~J@@?!G5.   ^JB5  :!!^   :@@  JG??GY.                  .YGJ^            ^JGY.     :75#@@#57:       .@@.          :@@:                                   ^JB5         :&@&?   .@@:      .&&.      ",
-    "                   !!                       .@&  &@.    .JGPB@@#?     .5Y   :@@@@:  .?5Y?7?PPJ~                      JG5!        !5GJ       .5Y  ??  Y5.      .JJ.         !YP?.                        .77.      .5Y           .?5?7?JJJ5?.   !J?P@@P?J!   ",
-    "                  .JJ.                      .77  77.         77              !YY!      7PP7  ?J.                       ?J.      .J?                                       .J?                           .JJ.                       7P55P7     .?P5YJJY5P?.  ",
-    "                                                                                                                                                                                                                                                            ",
-    "   Y#BB#Y        Y#BB#Y          Y#BJ.    .JBBBBBBB#5.     Y#BB#5.    .5#BBBBBBBJ.     Y#BB#Y        Y#BB#Y                                                                              Y#BB#Y        Y#BB#Y        Y#BB#Y     .JBBBBB#Y        Y#BB#Y     ",
-    ".PB7^~~^7GP.  .GB7^~~^7GP.    .PB!?@&:    :&@J^^~~~~^   .PG7^~~~^      ^~~~~^:?@@:  .PG7^~~^7GP.  .PG7^~~^7GP.      .GG.          .GG.            .GG.                    .GG.        .PG7^~~^7GP.  .PB7^^::!GP.  .PG7^~~^7GP.  :&@J^^~^7GP.  .PG7^~~^7BG.  ",
-    " ::     .@@:   ::     .@@:  .GB~  .&&.    :&&.          :@&.                 G#!.   :@@.    .@@:  :@@.    .&@:       ::            ::           .B#7.     .G@&&&&&&@G.     .7#B.      :@@:    .@@:  :@&. Y&#&@&:  :@&.    .&@:  :&&.    .@@:  :@&:     ::   ",
-    "      .#&~        .B@@B^    :&@@&&@@@@B.  :&@@&&@@B.    :&@@&&@@B.        .#&~        ^B@@@@B^      ~B@@&&@@&:                                .##~         ..........         ~##.     ..   .#&~    :&&..&@^^&&:  :&@@&&&&@@&:  :&@@&&@@B^    :&&:          ",
-    "    .#&^              ^##.     .  ~&&~       ...  ^&#.  :&&~    ^&#.    .#&^        .##^    ^##.      ..  ~&&:                    :##:          ^&#.      .B@@@@@@@@B.      .#&^          :#&^      :&&..#@@@@&:  :&&~    ~&&:  :&&~    ^##.  :&&:          ",
-    "  :&&^        :&&:    :&&:        :&&:            :&&:  :&&:    :&&:    :&&:        :&&:    :&&:          :&&:      :&&:          :&&:            ^&&:                    :&&^                      :&&:          :&&:    :&&:  :&&:    :&&:  :&&:    :&&:  ",
-    ".B@@@@@@@@#.    :#@@@@#.          :&&:    .#@@@@@@#.      .#@@@@#.      :&&:          .#@@@@#.      .#@@@@#.                    :&&:                                                      :&&:        .#@@@@B.    :&&:    :&&:  .#@@@@@@#.      .#@@@@#:    ",
-    "                                                                                                                                                                                                                                                            ",
-    " ........      ..........    ..........      ......      ..      ..    ..........    ..........    ..      ..    ..            ..      ..    ..      ..      ......      ........        ......      ........        ........    ..........    ..      ..   ",
-    ":&@@&&&&B~.   :&@@&&&&&@G.  :&@@&&&&&@G.   .~B&&&&B!.   :@@:    :@@:  .G&&&@@&&&G.  .G@&&&&&@@&:  :@@:    :@@:  :@@:          :@@?.  .?@@:  :@@:    :@@:   .~B&&&&B~.   :&@@&&&&B~.    .~B&&&&B~.   :&@@&&&&B~.    .~B&&&&&@G.  .G&&&@@&&&G.  :@@:    :@@:  ",
-    ":&&.    .@@:  :&&.          :&&.          :@@.    .GG.  :&&.    .&&:      .&&.              .&&:  :&&.   :?BP.  :&&:          :&@&G!!G&@&:  :&@J.   :&&:  :@@.    .@@:  :&&.    .@@:  :@@.    .@@:  :&&.    .@@:  :@@.              .&&.      :&&:    :&&:  ",
-    ":&&:    :&&:  :&@Y!!77~     :&@Y!!77~     :&&:          :&@Y!!!!Y@&:      :&&:              :&&:  :&@Y~!?GY     :&&:          :&&. 55 .&&:  :&@&GJ^ .&&:  :&&:    :&&:  :&@Y!!!!?GY.  :&&:    :&&:  :&@Y!!!!?5J.  .YG?!!77~         :&&:      :&&:    :&&:  ",
-    ":&&:    :&&:  :&@BPPGGJ.    :&@BPPGGJ.    :&&:   !J?~   :&@BPPPPB@&:      :&&:              :&&:  :&@BPGPJ^     :&&:          :&&:    :&&:  :&&. JGJP@&:  :&&:    :&&:  :&@BPPGBJ     :&&. 7! .@@:  :&@BPPGG57^      JBGGGPJ~       :&&:      :&&:    :&&:  ",
-    ":&&.    .@@:  :&&.          :&&.          :@@.   ~B@@:  :&&.    .&&:      .&&.      .J?     .@@:  :&&.   ?P5!   :&&.          :&&:    :&&:  :&&:   7B@&:  :@@.    .@@:  :&&.          :@@. ~Y5YJ~   :&&.    .@@:          .@@^      :&&:      :@@.    .@@:  ",
-    ":&@#PPGGPJ~   :&@#PPGGGGJ.  :@@:           ~JPGGPPYJ~   :@@:    :@@:  .JGPB@@BPGJ.   !YPGGGGPJ~   :@@:    .@@:  :&@#PPGGGGJ.  :@@:    :@@:  :@@:    .@@:   ~JPGGGGPJ~   :@@:           ~JPGPYJJP?.  :@@:    :@@:  .JGGGGGGPJ~       :@@:       ~JPGGGGPJ~   ",
-    " ^!77777~      ^!7777777~    ^^              ~7777~      ^^      ^^    ~77!~~!77~      ~7777~      ^^      ^^    ^!7777777~    ^^      ^^    ^^      ^^      ~7777~      ^^              ~??^  ~~    ^^      ^^    ~777777~          ^^          ~7777~     ",
-    "                                                                                                                                                                                                                                                            ",
-    ".GG.    .GG.  .GG.    .GG.  .GG.    .GG.  .GG.    .GG.  .G@&&&&&&&P.      .P&@G.                    .G@&P.          .BB.                      .BB.                      .GG.                                .GG.                    .G@@G.                  ",
-    ":&&:    :&&:  :&&:    :&&:  :@@:    :@@:  :@@:    :@@:   ...... ~@@:      :&@!      .##.              !@&:        .##^^##.                      ~&#.                    :&&:                                :&&:                  .B#^ .                    ",
-    ":&&:    :&&:  :&&:    :&&:    ^&#..#&^      ^&#..#&^          .#&^        :&&:        ^&#.            :&&:                                                  .B@@@@B.    :&@@@@@@B.      .B@@@@B.      .B@@@@@@&:    .B@@@@B.    .B@@@@&@@@B.    .B@@@@@@B.  ",
-    ":&&:    :&&:  :&&:    :&&:      ^&&^          ^&&^          :&&^          :&&:          ^&&:          :&&:                                                        ^&&:  :&&^    ^&&:  :&&^    ^&&:  :&&^    ^&&:  :&&^    ^&&:    ^&&^        :&&^    ^&&:  ",
-    ".&&^    ^&&:  :&&:.##.:&&:    :&#..#&:        :&&:        :&&:            :&&:            :&&^        :&&:                                                  :#@@@@@@&:  :&&:    :&&:  :&&:          :&&:    :&&:  :&@@@@@@@@#.    :&&:          .B@@@@@@&:  ",
-    "  .#&::&#.    :&@@B  B@@&:  :@&:    :&@:      :&&:      :&@~  ....        :&@~              .##:      ~@&:                      ........                  :#&^    ~@&:  :&@~    ^&#.  .#&^    ^&#:  .#&^    ~@&:  .#&^            :&&:                ^&#.  ",
-    "    .##.      .BB.    .BB.  .BB.    .BB.      .BB.      .G@@&&&&@@B.      .G@@B.                    .B@@G.                    .B@@&&&&@@B.                  .B@@&&@@G.  .G@@&&@@B.      .B@@@@B.      .B@@&&@@G.    .B@@&&@@B.    .BB.          .B@@@@B.    ",
-    "                                                                                                                                                                                                                                                            ",
-    " ::                ^^                ^^    ::            ::                                                                                                                ::                                                                               ",
-    ":@@.               55.               55.  :@@:          :@@:                                                                                                              .@@.                                                                              ",
-    ".&@P??JY!      !YJ?7^            !YJ?7^   :&&.   77.    :&&:           ~?Y!  !7      ~?JJJJY!        !YJJY!      ~?JJJJY!        !YJJJJ?~    !~  !YY!        !YJJJJY!    ~P@@P?J!      !!      !!    !!      !!    !!      !!   .77      77.   !!      !!   ",
-    ".&@GYY555Y!   .?5YB@&:          .?5YB@&:  :&@GYY5Y!     :&&:          :&@BJJJY5Y!   :&@BYY555Y!    !Y555555Y!   :&@P?JJJY5?.  .?5YJJJ?P@&:  :&@BYY555P?.  .?5YJJJJY5?.   7B@@GY5?.    :@@:    :@@:  :@@:    :@@:  :@@:    :@@:  .?PP7  7PP?.  ^@@:    .@@:  ",
-    ":&&.    .@@:      .&&:              .&&:  :&@P??YP?     :&&:          :&& .@@. &@:  :&&.    .@@:  :@@.    .@@:  :&@GY5555Y!    !Y5555YG@&:  :&@G~    77.   !Y5555P7       .&&.        :&&:    :&&:  :@@.    .@@:  :&&:    :&&:     ^JPPJ^      ~JPGGPPB@&:  ",
-    ":&&:    :&&:      .&&.      .PP     .@@:  :&&.   ^JGY.  :@@.          :&&. ^^ .&&:  :&&:    :&&:  :@@.    .@@:  :&@Y!!77~        ~77!!Y@&:  :&&.             :!~~~7G5.    :@@.   PP.  :@@.    .&&:   :?B5  5B?:   :@&. 55 .&@:     YG??GY        :!~~^J@@:  ",
-    ":@@:    :@@:  .P&#&@@&#&P.   :7B&##&G!.   :@@:    :@@:   .!G&#&&P.    :@@:    :@@:  :@@:    :@@:   .!G&##&G!.   :@@:                  :@@:  :@@:          .P&#BB##G7:      .!G&&B7:    .!G&###&@&:     :?BB?:      .7BB!!BB7.   .G#?:  :?#G.    .5####G!.   ",
-    " ..      ..    .^::::::^.      .^::^.      ..      ..      .^::^.      ..      ..    ..      ..      .^::^.      ..                    ..    ..            .^::::^.          .^^.        .^:::::.        ::          ::  ::      ::      ::      .^::^.     ",
-    "                                                                                                                                                                                                                                                            ",
-    "                    .##:        :##:        :##.                                                                                                                                                                                                            ",
-    "                  :&&^          :&&:          ^&&:                                                                                                                                                                                                          ",
-    ".B@@@@@@@@B.      ^&&:          :&&:          :&&^        ^&&^  ^&&:                                                                                                                                                                                        ",
-    "      ^&#.      :#&^            :&&:            ^&#:    :##  B@@B.                                                                                                                                                                                          ",
-    "    ~#B.          :@@:          :&&:          :@@:                                                                                                                                                                                                          ",
-    " .?@@!.:^^.       .GB!.         :@@:         .!BG.                                                                                                                                                                                                          ",
-    ".P&#B###&&P.        .GG.        .PP.        .GG.                                                                                                                                                                                                            "
-};
+static void draw_char(const rect_t *r, char c);
 
 void ui_draw_score(s32 score)
 {
+    rect_t r(score_rect_template);
 
+    for (u32 i = 0; i < SCORE_PLACK_DIGITS; i++) {
+        draw_char(&r, (score % 10) + '0');
+        score /= 10;
+        r.pos.x -= UI_CHAR_SIZE_X;
+    }
+
+    ASSERTF(score == 0, "Score too large to display in chosen rect, truncate it manually\n");
 }
 
-void ui_draw_timer(u32 minutes, u32 seconds)
+void ui_draw_timer(u32 seconds)
 {
+    ASSERTF(seconds <= TIMER_MAX_SECONDS, "Trying to display timer with %d seconds, max: %d\n", seconds, TIMER_MAX_SECONDS);
 
+    rect_t r(timer_rect_template);
+
+    draw_char(&r, (seconds % 10) + '0');
+    seconds /= 10;
+    r.pos.x -= UI_CHAR_SIZE_X;
+
+    draw_char(&r, (seconds % 6) + '0');
+    seconds /= 6;
+    r.pos.x -= UI_CHAR_SIZE_X;
+
+    draw_char(&r, ':');
+    r.pos.x -= UI_CHAR_SIZE_X;
+
+    draw_char(&r, (seconds % 10) + '0');
+    seconds /= 10;
+    r.pos.x -= UI_CHAR_SIZE_X;
+
+    draw_char(&r, (seconds % 10) + '0');
+    seconds /= 10;
+
+    ASSERT(seconds == 0);
+}
+
+void ui_draw_win_screen()
+{
+    draw_rect(&win_screen_bg_rect, WIN_UI_BG_COLOR);
+
+    rect_t r(win_screen_line1_rect_template);
+    for (u32 i = 0; i < WIN_SCREEN_LINE1_LEN; i++) {
+        draw_char(&r, win_screen_line1[i]);
+        r.pos.x += WIN_UI_CHAR_SIZE_X;
+    }
+
+    r = rect_t(win_screen_line2_rect_template);
+    for (u32 i = 0; i < WIN_SCREEN_LINE2_LEN; i++) {
+        draw_char(&r, win_screen_line2[i]);
+        r.pos.x += WIN_UI_CHAR_SIZE_X;
+    }
+}
+
+u32 ui_get_max_displayabe_score()
+{
+    u32 score = 1;
+    for (u32 i = 0; i < SCORE_PLACK_DIGITS; i++)
+        score *= 10;
+    return score*10 - 1; // 999...99
+}
+
+static void draw_char(const rect_t *r, char c)
+{
+    ASSERT(c >= MIN_CHAR && c <= MAX_CHAR);
+
+    u32 glyph_idx = c - MIN_CHAR;
+    u32 glyph_idx_u = glyph_idx % GLYPHS_PER_ROW;
+    u32 glyph_idx_v = glyph_idx / GLYPHS_PER_ROW;
+
+    u32 glyph_off_u = FONT_ATLAS_GLYPH_WIDTH * glyph_idx_u;
+    u32 glyph_off_v = FONT_ATLAS_GLYPH_HEIGHT * glyph_idx_v;
+
+
+    // @TODO: factor out with draw rect
+    u32 screen_pos_x = r->pos.x*SECTOR_PIX_SIZE;
+    u32 screen_pos_y = r->pos.y*SECTOR_PIX_SIZE;
+    if (screen_pos_x > SCREEN_WIDTH-1 || screen_pos_y > SCREEN_HEIGHT-1)
+        return;
+
+    u32 screen_size_x = r->size.x*SECTOR_PIX_SIZE;
+    u32 screen_size_y = r->size.y*SECTOR_PIX_SIZE;
+
+    if (screen_pos_x < 0) {
+        screen_size_x += screen_pos_x;
+        screen_pos_x = 0;
+    } else if (screen_pos_x > SCREEN_WIDTH-screen_size_x)
+        screen_size_x = SCREEN_WIDTH-screen_pos_x;
+    if (screen_pos_y < 0) {
+        screen_size_y += screen_pos_y;
+        screen_pos_y = 0;
+    } else if (screen_pos_y > SCREEN_HEIGHT-screen_size_y)
+        screen_size_y = SCREEN_HEIGHT-screen_pos_y;
+
+    ASSERT(screen_pos_x >= 0 && screen_pos_x+screen_size_x <= SCREEN_WIDTH);
+    ASSERT(screen_pos_y >= 0 && screen_pos_y+screen_size_y <= SCREEN_HEIGHT); 
+
+    for (u32 y = screen_pos_y; y < screen_pos_y+screen_size_y; y++) {
+        u32 *pixel = buffer[y] + screen_pos_x;
+        for (u32 x = screen_pos_x; x < screen_pos_x+screen_size_x; x++) {
+            u32 glyph_local_u = floor(((f32) x - screen_pos_x + 0.5)*FONT_ATLAS_GLYPH_WIDTH / screen_size_x);
+            u32 glyph_local_v = floor(((f32) y - screen_pos_y + 0.5)*FONT_ATLAS_GLYPH_HEIGHT / screen_size_y);
+
+            if (font_atlas[glyph_off_v+glyph_local_v][glyph_off_u+glyph_local_u] != ' ')
+                *(pixel++) = FONT_COLOR;
+            else
+                pixel++;
+        }
+    }
 }
