@@ -13,7 +13,6 @@
 #include <memory.h>
 
 // @TODO: game-design multiple levels
-// @TODO: tweak params and test that all holds
 
 /// Global structures ///
 

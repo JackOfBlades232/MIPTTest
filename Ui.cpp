@@ -6,11 +6,11 @@
 #include "Utils.h"
 
 static const rect_t score_rect_template( 
-        (SCORE_PLACK_X+SCORE_PLACK_DIGITS-1) * UI_CHAR_SIZE_X, SCORE_PLACK_Y * UI_CHAR_SIZE_Y,
+        SCORE_PLACK_X + (SCORE_PLACK_DIGITS-1)*UI_CHAR_SIZE_X, SCORE_PLACK_Y,
         UI_CHAR_SIZE_X, UI_CHAR_SIZE_Y
         );
 static const rect_t timer_rect_template( 
-        (TIMER_X+TIMER_FMT_LEN-1) * UI_CHAR_SIZE_X, TIMER_Y * UI_CHAR_SIZE_Y,
+        TIMER_X + (TIMER_FMT_LEN-1)*UI_CHAR_SIZE_X, TIMER_Y,
         UI_CHAR_SIZE_X, UI_CHAR_SIZE_Y
         );
 
