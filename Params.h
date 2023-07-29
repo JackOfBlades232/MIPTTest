@@ -2,7 +2,7 @@
 #include "Engine.h"
 #include "Utils.h"
 
-#define LEVEL_CNT 2
+#define LEVEL_CNT 3
 
 // In square sectors 
 #define GEOM_WIDTH   32

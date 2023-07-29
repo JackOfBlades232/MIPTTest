@@ -29,7 +29,6 @@ struct level_params_t {
     const static_geom_map_t geom_map;
     const moving_platform_params_t *platform_params; 
     const u32 num_platforms; 
-    const u32 num_collectables; 
 };
 
 /// Structs for use in-engine ///
@@ -86,16 +85,17 @@ struct collectable_t {
 struct level_t {
     moving_platform_t *platforms; 
     collectable_t *collectables; 
+
     const level_params_t *params;
+    u32 num_collectables;
 
     inline level_t() : platforms(nullptr), collectables(nullptr), params(nullptr) {}
     inline level_t(u32 index, const level_params_t *params_arr) :
-        platforms(nullptr), collectables(nullptr), params(&params_arr[index]) {}
+        platforms(nullptr), collectables(nullptr), params(&params_arr[index]), num_collectables(0) {}
 
     inline const static_geom_map_t *geom_map()     { return &params->geom_map; }
     inline u32 num_platforms()                     { return params->num_platforms; }
     inline moving_platform_t *get_platform(u32 i)  { return &platforms[i]; }
-    inline u32 num_collectables()                  { return params->num_collectables; }
     inline collectable_t *get_collectable(u32 i)   { return &collectables[i]; }
 
     void init();

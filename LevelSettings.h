@@ -25,6 +25,16 @@ static const moving_platform_params_t level2_platform_params[] = {
     moving_platform_params_t(vec2f_t(25, 12), vec2f_t(3, 1), 3, goal_positions25, 2, DANGER_GLYPH)
 };
 
+static const vec2f_t goal_positions31[] = { vec2f_t(15, 8), vec2f_t(15, 13) };
+static const vec2f_t goal_positions32[] = { vec2f_t(27, 8.5), vec2f_t(27, 17.5) };
+static const vec2f_t goal_positions33[] = { vec2f_t(8, 1), vec2f_t(21, 1) };
+
+static const moving_platform_params_t level3_platform_params[] = {
+    moving_platform_params_t(vec2f_t(15, 10), vec2f_t(2, 5), 4, goal_positions31, 2, DANGER_GLYPH),
+    moving_platform_params_t(vec2f_t(27, 17.5), vec2f_t(3, 1), 3, goal_positions32, 2, SURFACE_GLYPH),
+    moving_platform_params_t(vec2f_t(8, 1), vec2f_t(3, 1), 4, goal_positions33, 2, EXIT_GLYPH),
+};
+
 const level_params_t all_levels_params[LEVEL_CNT] = {
     {
         {
@@ -48,13 +58,12 @@ const level_params_t all_levels_params[LEVEL_CNT] = {
             "#                              #",
             "#                              #",
             "#             $                #",
-            "#    >>      ####              #",
+            "#            ####              #",
             "#   #############              #",
             "# ^ #############            $ #",
             "################################",
         },
-        level1_platform_params, sizeof(level1_platform_params)/sizeof(*level1_platform_params),
-        4
+        level1_platform_params, sizeof(level1_platform_params)/sizeof(*level1_platform_params)
     },
     {
         {
@@ -83,7 +92,35 @@ const level_params_t all_levels_params[LEVEL_CNT] = {
             "#              ######*    ######",
             "#******************************#",
         },
-        level2_platform_params, sizeof(level2_platform_params)/sizeof(*level2_platform_params),
-        4
+        level2_platform_params, sizeof(level2_platform_params)/sizeof(*level2_platform_params)
+    },
+    {
+        {
+            "****#####**************#####****", 
+            "*                              *",
+            "*                              *",
+            "*   $                      $   *",
+            "*  ##      ##      ##      ##  *",
+            "*                              *",
+            "*                              *",
+            "*#########################     *",
+            "*                              *",
+            "*                              *",
+            "*              $$              *",
+            "*                              *",
+            "*                              *",
+            "*          ####  ####          *",
+            "*                    ##        *",
+            "*      ##              ##      *",
+            "*                              *",
+            "*                              *",
+            "*  ##                          *",
+            "*                              *",
+            "*      ##                      *",
+            "*                              *",
+            "*             ^                *",
+            "**********############**********",
+        },
+        level3_platform_params, sizeof(level3_platform_params)/sizeof(*level3_platform_params)
     }
 };

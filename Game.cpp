@@ -12,10 +12,9 @@
 #include <math.h>
 #include <memory.h>
 
-// @TODO: game-design multiple levels (1 left)
-
-// @TODO: when lateral velocity.x = 0 and colliding with side of moving platform,
-//      strange stuff hapens, fix
+// @TODO: play test
+// @TODO: final code lookthrough
+// @TODO: reset resolution and test on windows
 
 /// Global structures ///
 
@@ -297,7 +296,7 @@ static void tick_moving_platforms_movement()
 
 static void tick_collectables_movement()
 {
-    for (u32 i = 0; i < current_level.num_collectables(); i++) {
+    for (u32 i = 0; i < current_level.num_collectables; i++) {
         collectable_t *collectable = current_level.get_collectable(i);
 
         collectable->seconds_since_changed_direction += game_state.fixed_dt;
@@ -349,7 +348,7 @@ static void resolve_player_collisions()
     }
 
     // Resolve collisions with collectables
-    for (u32 i = 0; i < current_level.num_collectables(); i++) {
+    for (u32 i = 0; i < current_level.num_collectables; i++) {
         collectable_t *collectable = current_level.get_collectable(i);
         if (collectable->was_collected)
             continue;
@@ -510,7 +509,7 @@ static void draw_moving_platforms()
 
 static void draw_collectables()
 {
-    for (u32 i = 0; i < current_level.num_collectables(); i++) {
+    for (u32 i = 0; i < current_level.num_collectables; i++) {
         collectable_t *collectable = current_level.get_collectable(i);
         if (collectable->was_collected)
             continue;
