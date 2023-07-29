@@ -25,7 +25,7 @@ typedef int64_t   s64;
 #define FLESS(_a, _b) (_b - _a >= EPSILON)
 #define FLEQ(_a, _b) (_b - _a > -EPSILON)
 
-#ifndef NO_ASSERT
+#if defined(USE_ASSERTIONS) && USE_ASSERTIONS == 1
 
   #include <stdio.h>
 

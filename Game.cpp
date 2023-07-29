@@ -7,10 +7,13 @@
 #include "Params.h"
 #include "LevelSettings.h"
 #include "Utils.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <memory.h>
+
+#if defined(LOG_FPS) && LOG_FPS == 1
+  #include <stdio.h>
+#endif
 
 // @TODO: play test
 // @TODO: final code lookthrough
@@ -184,7 +187,9 @@ void act(f32 dt)
     if (is_key_pressed(VK_ESCAPE))
         schedule_quit_game();
 
+#if defined(LOG_FPS) && LOG_FPS == 1
     printf("%6.5f s per frame\n", dt);
+#endif
 
     switch (game_state.state) {
         case fsm_game:
