@@ -15,9 +15,6 @@
   #include <stdio.h>
 #endif
 
-// @TODO: final code lookthrough
-// @TODO: reset resolution and test on windows
-
 /// Global structures ///
 
 enum game_fsm_state_t {
@@ -111,7 +108,8 @@ struct player_box_t {
 };
 
 /// Global game state ///
-static game_state_t  game_state; static player_box_t  player_box;
+static game_state_t  game_state; 
+static player_box_t  player_box;
 static level_t       current_level;
 
 /// Initialization and level switching functions ///
