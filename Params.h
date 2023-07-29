@@ -18,11 +18,12 @@
 
 #define SURFACE_COLOR      0x90EE90
 #define DANGER_COLOR       0xFC6A03
-#define EXIT_COLOR         0x5C54A4
+#define EXIT_COLOR         0x6A5ACD
 #define PLAYER_COLOR       0x8F00FF
 #define COLLECTABLE_COLOR  0xFFFF00
-#define FONT_COLOR         0xFFFFFF
-#define WIN_UI_BG_COLOR    0xFF0000
+#define HUD_FONT_COLOR     0xFFFFFF
+#define WIN_UI_BG_COLOR    0x90EE90
+#define WIN_UI_FONT_COLOR  0x8F00FF
 
 #define PLAYER_SIZE_X            0.4
 #define PLAYER_SIZE_Y            0.4

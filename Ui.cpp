@@ -31,7 +31,7 @@ void ui_draw_score(s32 score)
     rect_t r(score_rect_template);
 
     for (u32 i = 0; i < SCORE_PLACK_DIGITS; i++) {
-        draw_char(&r, (score % 10) + '0', FONT_COLOR);
+        draw_char(&r, (score % 10) + '0', HUD_FONT_COLOR);
         score /= 10;
         r.pos.x -= UI_CHAR_SIZE_X;
     }
@@ -45,22 +45,22 @@ void ui_draw_timer(u32 seconds)
 
     rect_t r(timer_rect_template);
 
-    draw_char(&r, (seconds % 10) + '0', FONT_COLOR);
+    draw_char(&r, (seconds % 10) + '0', HUD_FONT_COLOR);
     seconds /= 10;
     r.pos.x -= UI_CHAR_SIZE_X;
 
-    draw_char(&r, (seconds % 6) + '0', FONT_COLOR);
+    draw_char(&r, (seconds % 6) + '0', HUD_FONT_COLOR);
     seconds /= 6;
     r.pos.x -= UI_CHAR_SIZE_X;
 
-    draw_char(&r, ':', FONT_COLOR);
+    draw_char(&r, ':', HUD_FONT_COLOR);
     r.pos.x -= UI_CHAR_SIZE_X;
 
-    draw_char(&r, (seconds % 10) + '0', FONT_COLOR);
+    draw_char(&r, (seconds % 10) + '0', HUD_FONT_COLOR);
     seconds /= 10;
     r.pos.x -= UI_CHAR_SIZE_X;
 
-    draw_char(&r, (seconds % 10) + '0', FONT_COLOR);
+    draw_char(&r, (seconds % 10) + '0', HUD_FONT_COLOR);
     seconds /= 10;
 
     ASSERT(seconds == 0);
@@ -72,13 +72,13 @@ void ui_draw_win_screen()
 
     rect_t r(win_screen_line1_rect_template);
     for (u32 i = 0; i < WIN_SCREEN_LINE1_LEN; i++) {
-        draw_char(&r, win_screen_line1[i], FONT_COLOR);
+        draw_char(&r, win_screen_line1[i], WIN_UI_FONT_COLOR);
         r.pos.x += WIN_UI_CHAR_SIZE_X;
     }
 
     r = rect_t(win_screen_line2_rect_template);
     for (u32 i = 0; i < WIN_SCREEN_LINE2_LEN; i++) {
-        draw_char(&r, win_screen_line2[i], FONT_COLOR);
+        draw_char(&r, win_screen_line2[i], WIN_UI_FONT_COLOR);
         r.pos.x += WIN_UI_CHAR_SIZE_X;
     }
 }

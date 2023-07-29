@@ -15,7 +15,6 @@
   #include <stdio.h>
 #endif
 
-// @TODO: play test
 // @TODO: final code lookthrough
 // @TODO: reset resolution and test on windows
 
