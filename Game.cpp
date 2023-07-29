@@ -13,6 +13,7 @@
 #include <memory.h>
 
 // @TODO: game-design multiple levels
+//      make moving platforms have glyph type
 
 /// Global structures ///
 
@@ -276,6 +277,8 @@ static void tick_moving_platforms_movement()
 {
     for (u32 i = 0; i < current_level.num_platforms(); i++) {
         moving_platform_t *platform = current_level.get_platform(i);
+        if ((platform->cur_goal() - platform->rect.pos).is_zero())
+            platform->inc_goal_idx();
         
         vec2f_t dest = platform->cur_goal();
         vec2f_t to_dest = dest - platform->rect.pos;
@@ -414,9 +417,8 @@ static void resolve_player_to_static_rect_collision(rect_t *s_rect)
     f32 tmin;
     vec2f_t normal;
     bool intersected = intersect_ray_with_rect(player_center, player_dir, &ext_s_rect, &tmin, &normal);
-
-    // we are supposed to only check the sectors that the player_box intersects with
-    ASSERT(intersected);
+    if (!intersected)
+        return;
     
     player_box.rect.pos += player_dir*tmin + normal*EPSILON; 
     player_box.velocity = reflect_vec(-player_box.velocity, normal);

@@ -5,7 +5,7 @@
 #define LEVEL_CNT 2
 
 // In square sectors 
-#define GEOM_WIDTH   4000
+#define GEOM_WIDTH   32
 #define GEOM_HEIGHT  24
 
 #define PHYSICS_UPDATE_INTERVAL 1./60.
