@@ -12,8 +12,10 @@
 #include <math.h>
 #include <memory.h>
 
-// @TODO: game-design multiple levels
-//      make moving platforms have glyph type
+// @TODO: game-design multiple levels (1 left)
+
+// @TODO: when lateral velocity.x = 0 and colliding with side of moving platform,
+//      strange stuff hapens, fix
 
 /// Global structures ///
 
@@ -322,7 +324,7 @@ static void tick_collectables_movement()
 /// Player box collision physics ///
 
 static void player_collect_intersecting_sectors();
-static void resolve_player_to_static_rect_collision(rect_t *s_rect);
+static void resolve_player_to_static_rect_collision(rect_t *s_rect, char geom_type_glyph);
 
 static void resolve_player_collisions()
 {
@@ -335,26 +337,15 @@ static void resolve_player_collisions()
     for (u32 i = 0; i < player_box.num_sectors; i++) {
         u32 x = player_box.sectors[i].pos.x;
         u32 y = player_box.sectors[i].pos.y;
+        char glyph = (*geom_map)[y][x];
 
-        switch ((*geom_map)[y][x]) {
-            case SURFACE_GLYPH:
-                resolve_player_to_static_rect_collision(&player_box.sectors[i]);
-                break;
-            case DANGER_GLYPH:
-                game_state.player_died = true;
-                break;
-            case EXIT_GLYPH:
-                game_state.level_completed = true;
-                break;
-            default:
-                break;
-        }
+        resolve_player_to_static_rect_collision(&player_box.sectors[i], glyph);
     }
 
     // Resolve collisions with moving platforms
     for (u32 i = 0; i < current_level.num_platforms(); i++) {
         moving_platform_t *platform = current_level.get_platform(i);
-        resolve_player_to_static_rect_collision(&platform->rect);
+        resolve_player_to_static_rect_collision(&platform->rect, platform->glyph());
     }
 
     // Resolve collisions with collectables
@@ -403,9 +394,26 @@ static void player_collect_intersecting_sectors()
     }
 }
 
-static void resolve_player_to_static_rect_collision(rect_t *s_rect)
+static void resolve_player_to_static_rect_collision(rect_t *s_rect, char geom_type_glyph)
 {
-    if (player_box.velocity.is_zero() || !rects_are_intersecting(&player_box.rect, s_rect))
+    if (!rects_are_intersecting(&player_box.rect, s_rect))
+        return;
+
+    switch (geom_type_glyph) {
+        case SURFACE_GLYPH:
+            // Continue with the function body
+            break;
+        case DANGER_GLYPH:
+            game_state.player_died = true;
+            return;
+        case EXIT_GLYPH:
+            game_state.level_completed = true;
+            return;
+        default:
+            return;
+    }
+
+    if (player_box.velocity.is_zero())
         return;
 
     vec2f_t player_center = player_box.rect.pos + player_box.half_size;
@@ -443,6 +451,8 @@ static void resolve_player_to_static_rect_collision(rect_t *s_rect)
 static void draw_static_geom();
 static void draw_moving_platforms();
 static void draw_collectables();
+
+static u32 get_glyph_color(char glyph);
 
 void draw()
 {
@@ -483,22 +493,7 @@ static void draw_static_geom()
         for (sector_rect.pos.x = 0; sector_rect.pos.x < GEOM_WIDTH; sector_rect.pos.x++) {
             u32 x = sector_rect.pos.x;
             u32 y = sector_rect.pos.y;
-            u32 color;
-
-            switch ((*geom_map)[y][x]) {
-                case SURFACE_GLYPH:
-                    color = SURFACE_COLOR;
-                    break;
-                case DANGER_GLYPH:
-                    color = DANGER_COLOR;
-                    break;
-                case EXIT_GLYPH:
-                    color = EXIT_COLOR;
-                    break;
-                default:
-                    color = 0;
-                    break;
-            }
+            u32 color = get_glyph_color((*geom_map)[y][x]);
 
             if (color) draw_rect(&sector_rect, color);
         }
@@ -508,7 +503,8 @@ static void draw_moving_platforms()
 {
     for (u32 i = 0; i < current_level.num_platforms(); i++) {
         moving_platform_t *platform = current_level.get_platform(i);
-        draw_rect(&platform->rect, SURFACE_COLOR);
+        u32 color = get_glyph_color(platform->glyph());
+        if (color) draw_rect(&platform->rect, color);
     }
 }
 
@@ -520,6 +516,20 @@ static void draw_collectables()
             continue;
 
         draw_circle(&collectable->shape, COLLECTABLE_COLOR);
+    }
+}
+
+static u32 get_glyph_color(char glyph)
+{
+    switch (glyph) {
+        case SURFACE_GLYPH:
+            return SURFACE_COLOR;
+        case DANGER_GLYPH:
+            return DANGER_COLOR;
+        case EXIT_GLYPH:
+            return EXIT_COLOR;
+        default:
+            return 0;
     }
 }
 
