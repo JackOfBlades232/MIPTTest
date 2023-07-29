@@ -2,6 +2,7 @@
 #include "Engine.h"
 #include "FontAtlas.h"
 #include "Params.h"
+#include "Utils.h"
 
 static inline void calculate_rect_screen_dimensions(
         const rect_t *r, 
@@ -71,6 +72,7 @@ void draw_char(const rect_t *r, char c, u32 color)
             u32 glyph_local_u = floor(((f32) x - screen_pos_x + 0.5)*FONT_ATLAS_GLYPH_WIDTH / screen_size_x);
             u32 glyph_local_v = floor(((f32) y - screen_pos_y + 0.5)*FONT_ATLAS_GLYPH_HEIGHT / screen_size_y);
 
+            // Possible improvement -- map ascii art to shades of color
             if (font_atlas[glyph_off_v+glyph_local_v][glyph_off_u+glyph_local_u] != ' ')
                 *(pixel++) = color;
             else

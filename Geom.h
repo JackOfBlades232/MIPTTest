@@ -31,6 +31,9 @@ inline bool rects_are_intersecting(rect_t *r1, rect_t *r2)
 
 inline bool circle_and_rect_are_intersecting(circle_t *c, rect_t *r)
 {
-    return (c->center.x + c->rad >= r->pos.x && c->center.x - c->rad <= r->pos.x + r->size.x) &&
-           (c->center.y + c->rad >= r->pos.y && c->center.y - c->rad <= r->pos.y + r->size.y);
+    // Calculate offset from closest point to center in rect
+    f32 dx = MAX(r->pos.x, MIN(c->center.x, r->pos.x+r->size.x)) - c->center.x;
+    f32 dy = MAX(r->pos.y, MIN(c->center.y, r->pos.y+r->size.y)) - c->center.y;
+    // Check if it is inside the circle
+    return dx*dx + dy*dy <= c->rad*c->rad;
 }

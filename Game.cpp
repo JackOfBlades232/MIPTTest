@@ -15,8 +15,6 @@
 // @TODO: game-design multiple levels
 // @TODO: tweak params and test that all holds
 
-// @TODO: refac
-
 /// Global structures ///
 
 enum game_fsm_state_t {
@@ -30,6 +28,7 @@ struct game_state_t {
     f32  fixed_dt;
     f32  seconds_since_level_start;
 
+    bool movement_controls_locked;
     bool movement_button_pressed;
 
     u32  cur_level_idx;
@@ -41,16 +40,22 @@ struct game_state_t {
     bool level_completed;
     bool player_died;
 
-    inline game_state_t() : state(fsm_game), fixed_dt(0), seconds_since_level_start(0), movement_button_pressed(false), 
-        cur_level_idx(0), score(0), prev_score(0), max_score(0), level_completed(false), player_died(false) {}
-    inline game_state_t(u32 max_score) : state(fsm_game), fixed_dt(0), seconds_since_level_start(0), movement_button_pressed(false), 
-        cur_level_idx(0), score(0), prev_score(0), max_score(max_score), level_completed(false), player_died(false) {}
+    inline game_state_t() : state(fsm_game), fixed_dt(0), seconds_since_level_start(0),
+        movement_controls_locked(false), movement_button_pressed(false), cur_level_idx(0),
+        score(0), prev_score(0), max_score(0), level_completed(false), player_died(false) {}
+
+    inline game_state_t(u32 max_score) : state(fsm_game), fixed_dt(0),
+        seconds_since_level_start(0), movement_controls_locked(false), 
+        movement_button_pressed(false), cur_level_idx(0), score(0), 
+        prev_score(0), max_score(max_score), level_completed(false), 
+        player_died(false) {}
 
     void reset()
     {
         fixed_dt = 0;
         seconds_since_level_start = 0;
         score = prev_score;
+        movement_controls_locked = false;
         movement_button_pressed = false;
         level_completed = false;
         player_died = false;
@@ -204,12 +209,11 @@ void act(f32 dt)
 
 static void process_input()
 {
+    if (game_state.movement_controls_locked)
+        return;
+
     bool l_pressed = is_key_pressed(VK_LEFT);
     bool r_pressed = is_key_pressed(VK_RIGHT);
-
-    // @TODO: merge it somewhere with the logic from tick
-    if (player_box.seconds_after_side_wall_collision < PLAYER_SIDE_WALL_COLLISION_TIMEOUT)
-        return;
 
     game_state.movement_button_pressed = false;
 
@@ -247,13 +251,14 @@ static void tick_physics(f32 dt)
 
 static void tick_player_movement()
 {
-    // @TEST
     if (player_box.seconds_after_side_wall_collision < PLAYER_SIDE_WALL_COLLISION_TIMEOUT)
         player_box.seconds_after_side_wall_collision += game_state.fixed_dt;
+    else if (game_state.movement_controls_locked)
+        game_state.movement_controls_locked = false;
 
     player_box.velocity += player_box.acceleration * game_state.fixed_dt;
 
-    // @HACK
+    // Apply lateral drag if player is not holding any buttons
     f32 lateral_speed = player_box.velocity.x;
     if (!game_state.movement_button_pressed && !FZERO(lateral_speed)) {
         f32 d_speed = MIN(ABS(lateral_speed), PLAYER_LATERAL_DRAG * game_state.fixed_dt) * SGN(lateral_speed);
@@ -421,8 +426,10 @@ static void resolve_player_to_static_rect_collision(rect_t *s_rect)
     //      a side wall collision
     if (FZERO(normal.x)) // horiz wall/surface
         player_box.velocity.y = SGN(normal.y) * PLAYER_VERT_BOUNCE_VELOCITY;
-    else // vertical (side) wall/surface
+    else { // vertical (side) wall/surface
+        game_state.movement_controls_locked = true;
         player_box.seconds_after_side_wall_collision = 0;
+    }
 }
 
 /// DRAW PHASE ///
