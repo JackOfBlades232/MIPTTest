@@ -1,5 +1,3 @@
-# You are free to modify this file
-
 cmake_minimum_required(VERSION 3.0)
 project(game)
 find_package(X11 REQUIRED)
