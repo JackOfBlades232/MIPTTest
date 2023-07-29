@@ -40,15 +40,19 @@ struct game_state_t {
     bool level_completed;
     bool player_died;
 
+    // Optimization to only make the win screnn UI "reactive" (in this case -- static)
+    bool win_screen_dirty;
+
     inline game_state_t() : state(fsm_game), fixed_dt(0), seconds_since_level_start(0),
         movement_controls_locked(false), movement_button_pressed(false), cur_level_idx(0),
-        score(0), prev_score(0), max_score(0), level_completed(false), player_died(false) {}
+        score(0), prev_score(0), max_score(0), level_completed(false), player_died(false),
+        win_screen_dirty(true) {}
 
     inline game_state_t(u32 max_score) : state(fsm_game), fixed_dt(0),
         seconds_since_level_start(0), movement_controls_locked(false), 
         movement_button_pressed(false), cur_level_idx(0), score(0), 
         prev_score(0), max_score(max_score), level_completed(false), 
-        player_died(false) {}
+        player_died(false), win_screen_dirty(true) {}
 
     void reset()
     {
@@ -66,6 +70,7 @@ struct game_state_t {
         state = fsm_game;
         prev_score = 0;
         cur_level_idx = 0;
+        win_screen_dirty = true;
         reset();
     }
 };
@@ -440,12 +445,11 @@ static void draw_collectables();
 
 void draw()
 {
-    // clear backbuffer
-    memset(buffer, 0, SCREEN_HEIGHT * SCREEN_WIDTH * sizeof(u32));
-
     switch (game_state.state) {
         case fsm_game:
             {
+                memset(buffer, 0, SCREEN_HEIGHT * SCREEN_WIDTH * sizeof(u32));
+
                 draw_static_geom();
                 draw_moving_platforms();
                 draw_collectables();
@@ -458,8 +462,12 @@ void draw()
 
         case fsm_win_scren:
             {
-                // Now it is a static picture drawn every frame, not too optimal
-                ui_draw_win_screen();
+                if (game_state.win_screen_dirty) {
+                    memset(buffer, 0, SCREEN_HEIGHT * SCREEN_WIDTH * sizeof(u32));
+                    ui_draw_win_screen();
+
+                    game_state.win_screen_dirty = false;
+                }
             }
             break;
     }
